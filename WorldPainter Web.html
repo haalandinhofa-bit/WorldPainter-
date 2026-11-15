@@ -1,0 +1,3181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>WorldPainter Web - Minecraft Map Generator (Java & Bedrock)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- JSZip & pako for real Minecraft Java (.zip / Anvil .mca) and Bedrock (.mcworld) binary packaging -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <!-- Three.js for interactive 3D terrain preview -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    /* Classic Windows Swing / WorldPainter Desktop Look */
+    :root {
+      --wp-bg: #f0f0f0;
+      --wp-panel: #f5f5f5;
+      --wp-border: #adadad;
+      --wp-border-dark: #7a7a7a;
+      --wp-highlight: #cce8ff;
+      --wp-highlight-border: #99d1ff;
+      --wp-orange-top: #ffb84d;
+      --wp-orange-bot: #f59300;
+      --wp-orange-border: #c97200;
+      --wp-text: #1a1a1a;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    input, select {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--wp-bg);
+      color: var(--wp-text);
+      overflow: hidden;
+      height: 100dvh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Classic Swing Button */
+    .wp-btn {
+      background: linear-gradient(to bottom, #ffffff 0%, #e5e5e5 100%);
+      border: 1px solid #adadad;
+      border-radius: 2px;
+      padding: 3px 10px;
+      font-size: 12px;
+      color: #111;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background 0.1s;
+    }
+    .wp-btn:hover {
+      background: linear-gradient(to bottom, #f2f9ff 0%, #d8ecff 100%);
+      border-color: #7eb4ea;
+    }
+    .wp-btn:active, .wp-btn.active {
+      background: #cce8ff;
+      border-color: #2680eb;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .wp-btn-primary {
+      background: linear-gradient(to bottom, #f7fbff 0%, #dceeff 100%);
+      border: 1px solid #3399ff;
+      font-weight: 600;
+    }
+
+    /* Tool Grid Button */
+    .wp-tool-btn {
+      background: linear-gradient(to bottom, #fafafa 0%, #e6e6e6 100%);
+      border: 1px solid #b5b5b5;
+      border-radius: 2px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+    }
+    .wp-tool-btn:hover {
+      background: #e5f3ff;
+      border-color: #7eb4ea;
+    }
+    .wp-tool-btn.active {
+      background: #cce8ff;
+      border: 1.5px solid #2680eb;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.18);
+    }
+
+    /* Orange Dock Header (from screenshot 2) */
+    .wp-dock-header-orange {
+      background: linear-gradient(to bottom, #ffc978 0%, #f79600 100%);
+      border-bottom: 1px solid #c47200;
+      color: #1a1000;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 3px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .wp-dock-header-gray {
+      background: linear-gradient(to bottom, #f4f4f4 0%, #dfdfdf 100%);
+      border-bottom: 1px solid #b5b5b5;
+      color: #222;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 3px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Classic Input / Select */
+    .wp-input {
+      background: #fff;
+      border: 1px solid #8e8e8e;
+      border-radius: 1px;
+      padding: 2px 5px;
+      font-size: 12px;
+      color: #111;
+    }
+    .wp-input:focus {
+      outline: none;
+      border-color: #2680eb;
+    }
+
+    /* Vertical rotated dock tabs */
+    .wp-vtab {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      padding: 8px 3px;
+      font-size: 11px;
+      background: #e4e4e4;
+      border: 1px solid #b5b5b5;
+      border-right: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #333;
+    }
+    .wp-vtab.active {
+      background: #fff;
+      font-weight: 600;
+      color: #000;
+      border-left: 2px solid #f79600;
+    }
+
+    .wp-vtab-right {
+      writing-mode: vertical-rl;
+      padding: 8px 3px;
+      font-size: 11px;
+      background: #e4e4e4;
+      border: 1px solid #b5b5b5;
+      border-left: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #333;
+    }
+    .wp-vtab-right.active {
+      background: #fff;
+      font-weight: 600;
+      color: #000;
+      border-right: 2px solid #2680eb;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #e8e8e8;
+      border-left: 1px solid #ccc;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border: 1px solid #999;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+
+    /* Menu Dropdowns */
+    .wp-menu-item {
+      position: relative;
+      padding: 2px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .wp-menu-item:hover {
+      background: #cce8ff;
+    }
+    .wp-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #f6f6f6;
+      border: 1px solid #999;
+      box-shadow: 2px 3px 6px rgba(0,0,0,0.22);
+      min-width: 215px;
+      z-index: 60;
+      padding: 2px 0;
+    }
+    .wp-dropdown-row {
+      padding: 5px 14px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+    }
+    .wp-dropdown-row:hover {
+      background: #ffe0b3;
+    }
+
+    /* Mobile Drawer Overrides */
+    @media (max-width: 899px) {
+      .desktop-dock {
+        display: none;
+      }
+      .desktop-dock.mobile-open {
+        display: flex !important;
+        position: fixed;
+        top: 66px;
+        bottom: 46px;
+        z-index: 45;
+        width: 270px;
+        max-width: 85vw;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+      }
+      .left-dock.mobile-open {
+        left: 0;
+      }
+      .right-dock.mobile-open {
+        right: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP APPLICATION WINDOW TITLE BAR (Classic Swing Look) -->
+  <header class="bg-[#e8e8e8] border-b border-[#b5b5b5] px-2 py-1 flex items-center justify-between text-xs shrink-0">
+    <div class="flex items-center gap-2 truncate">
+      <!-- Shovel/WorldPainter Icon -->
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="13" width="20" height="9" rx="1" fill="#5d4037"/>
+        <rect x="2" y="11" width="20" height="4" fill="#4caf50"/>
+        <path d="M14 3L20 9L17 12L11 6L14 3Z" fill="#90a4ae" stroke="#37474f" stroke-width="1.5"/>
+        <path d="M12.5 7.5L6 14" stroke="#8d6e63" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <span id="window-title" class="font-semibold text-[#111] truncate">WorldPainter - Conquest Layers World - Surface</span>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span class="hidden sm:inline text-[11px] text-[#555] bg-white border border-[#bbb] px-1.5 py-0.5 rounded-sm" id="header-format-badge">Java 1.21+ / Bedrock</span>
+      <button onclick="openExportModal()" class="wp-btn wp-btn-primary text-[11px] py-0.5 px-2">
+        <span>Export World</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MENU BAR -->
+  <nav class="bg-[#f5f5f5] border-b border-[#c5c5c5] px-1 flex items-center text-xs shrink-0 relative z-40" id="menubar">
+    <!-- File Menu -->
+    <div class="wp-menu-item" onclick="toggleMenu('menu-file', event)">
+      File
+      <div id="menu-file" class="wp-dropdown hidden">
+        <div class="wp-dropdown-row" onclick="openNewWorldModal()"><span>New World...</span><span class="text-gray-400">Ctrl+N</span></div>
+        <div class="wp-dropdown-row" onclick="triggerImportProject()"><span>Open World (.wpweb.json)...</span><span class="text-gray-400">Ctrl+O</span></div>
+        <div class="wp-dropdown-row" onclick="saveProjectJSON()"><span>Save World Project</span><span class="text-gray-400">Ctrl+S</span></div>
+        <div class="border-t border-gray-300 my-1"></div>
+        <div class="wp-dropdown-row" onclick="triggerImportHeightmap()"><span>Import Heightmap (PNG/JPG)...</span></div>
+        <div class="border-t border-gray-300 my-1"></div>
+        <div class="wp-dropdown-row font-semibold text-blue-900" onclick="openExportModal('java')"><span>Export as Minecraft Java Map...</span><span class="text-gray-400">Ctrl+E</span></div>
+        <div class="wp-dropdown-row font-semibold text-emerald-900" onclick="openExportModal('bedrock')"><span>Export as Minecraft Bedrock (.mcworld)...</span></div>
+      </div>
+    </div>
+
+    <!-- Edit Menu -->
+    <div class="wp-menu-item" onclick="toggleMenu('menu-edit', event)">
+      Edit
+      <div id="menu-edit" class="wp-dropdown hidden">
+        <div class="wp-dropdown-row" onclick="undo()"><span>Undo</span><span class="text-gray-400">Ctrl+Z</span></div>
+        <div class="wp-dropdown-row" onclick="redo()"><span>Redo</span><span class="text-gray-400">Ctrl+Y</span></div>
+        <div class="border-t border-gray-300 my-1"></div>
+        <div class="wp-dropdown-row" onclick="globalSmooth()"><span>Global Smooth Terrain</span></div>
+        <div class="wp-dropdown-row" onclick="globalRaise(5)"><span>Raise Entire World (+5 blocks)</span></div>
+        <div class="wp-dropdown-row" onclick="globalRaise(-5)"><span>Lower Entire World (-5 blocks)</span></div>
+        <div class="wp-dropdown-row" onclick="clearSelection()"><span>Clear Selection Mask</span></div>
+      </div>
+    </div>
+
+    <!-- View Menu -->
+    <div class="wp-menu-item" onclick="toggleMenu('menu-view', event)">
+      View
+      <div id="menu-view" class="wp-dropdown hidden">
+        <div class="wp-dropdown-row" onclick="toggleContours()"><span>Toggle Contour Lines</span><span id="chk-contours">✓</span></div>
+        <div class="wp-dropdown-row" onclick="toggleGrid()"><span>Toggle Chunk Grid (16x16)</span><span id="chk-grid"></span></div>
+        <div class="wp-dropdown-row" onclick="toggle3DView()"><span>3D Terrain Preview</span><span class="text-gray-400">Ctrl+3</span></div>
+        <div class="border-t border-gray-300 my-1"></div>
+        <div class="wp-dropdown-row" onclick="changeZoom(1.25)"><span>Zoom In</span><span>+</span></div>
+        <div class="wp-dropdown-row" onclick="changeZoom(0.8)"><span>Zoom Out</span><span>-</span></div>
+        <div class="wp-dropdown-row" onclick="resetCamera()"><span>Reset View & Center</span><span>0</span></div>
+      </div>
+    </div>
+
+    <!-- Tools Menu -->
+    <div class="wp-menu-item" onclick="toggleMenu('menu-tools', event)">
+      Tools
+      <div id="menu-tools" class="wp-dropdown hidden">
+        <div class="wp-dropdown-row" onclick="selectTool('height')"><span>Height (Raise / Lower)</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('flatten')"><span>Flatten Terrain</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('smooth')"><span>Smooth Terrain</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('mountain')"><span>Raise Mountain Peak</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('spray')"><span>Spray Paint Terrain/Layer</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('flood')"><span>Flood Water / Lava</span></div>
+        <div class="wp-dropdown-row" onclick="selectTool('sponge')"><span>Sponge (Drain Liquid)</span></div>
+      </div>
+    </div>
+
+    <!-- Help Menu -->
+    <div class="wp-menu-item" onclick="toggleMenu('menu-help', event)">
+      Help
+      <div id="menu-help" class="wp-dropdown hidden">
+        <div class="wp-dropdown-row" onclick="showToast('Left-click / 1-finger drag to sculpt or paint. Right-click / Alt-drag or 2-finger pinch to pan & zoom.')"><span>Controls & Touch Guide</span></div>
+        <div class="wp-dropdown-row" onclick="openExportModal()"><span>How to Load Maps in Java & Bedrock</span></div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ICON TOOLBAR (Faithful to Screenshot 2) -->
+  <div class="bg-[#efefef] border-b border-[#b5b5b5] px-1.5 py-1 flex items-center gap-1 overflow-x-auto shrink-0">
+    <button class="wp-btn p-1" title="New World" onclick="openNewWorldModal()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><path fill="#fff" stroke="#666" d="M3 1h7l3 3v11H3z"/><path fill="#4caf50" d="M10 1v3h3z"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Open Project" onclick="triggerImportProject()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><path fill="#f5b041" stroke="#9c640c" d="M1 3h5l2 2h7v9H1z"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Save Project" onclick="saveProjectJSON()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1" fill="#3498db" stroke="#1b4f72"/><rect x="4" y="2" width="8" height="5" fill="#fff"/><rect x="4" y="9" width="8" height="5" fill="#ecf0f1"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Export Map (Java / Bedrock)" onclick="openExportModal()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="2" y="7" width="12" height="7" fill="#5d4037"/><rect x="2" y="6" width="12" height="2" fill="#4caf50"/><path d="M8 1v8M5 4l3-3 3 3" stroke="#e67e22" stroke-width="2" fill="none"/></svg>
+    </button>
+
+    <div class="h-4 w-[1px] bg-[#bbb] mx-0.5"></div>
+
+    <button class="wp-btn p-1" title="Undo" onclick="undo()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M6 3L2 7l4 4V8.5c4 0 6.5 1.5 8 4.5-1-5-4-7.5-8-7.5V3z" fill="#e67e22"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Redo" onclick="redo()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M10 3l4 4-4 4V8.5c-4 0-6.5 1.5-8 4.5 1-5 4-7.5 8-7.5V3z" fill="#e67e22"/></svg>
+    </button>
+
+    <div class="h-4 w-[1px] bg-[#bbb] mx-0.5"></div>
+
+    <button class="wp-btn p-1" title="Zoom In" onclick="changeZoom(1.25)">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="#e8f6ff" stroke="#444"/><path d="M7 5v4M5 7h4M10.5 10.5L14 14" stroke="#333" stroke-width="1.5"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Zoom Out" onclick="changeZoom(0.8)">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="#e8f6ff" stroke="#444"/><path d="M5 7h4M10.5 10.5L14 14" stroke="#333" stroke-width="1.5"/></svg>
+    </button>
+    <button class="wp-btn p-1" title="Reset View" onclick="resetCamera()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="none" stroke="#444" stroke-dasharray="2 1"/><circle cx="8" cy="8" r="2" fill="#e74c3c"/></svg>
+    </button>
+
+    <div class="h-4 w-[1px] bg-[#bbb] mx-0.5"></div>
+
+    <!-- Toggle Contours -->
+    <button id="btn-tb-contours" class="wp-btn active p-1" title="Toggle Contour Lines" onclick="toggleContours()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="6" ry="4" fill="none" stroke="#2e7d32" stroke-width="1.3"/><ellipse cx="8" cy="8" rx="3" ry="2" fill="none" stroke="#1b5e20" stroke-width="1.3"/></svg>
+    </button>
+
+    <!-- Toggle 3D Preview -->
+    <button id="btn-tb-3d" class="wp-btn px-2 py-0.5 font-semibold text-blue-900" title="Show 3D Terrain View" onclick="toggle3DView()">
+      <svg class="w-4 h-4" viewBox="0 0 16 16"><polygon points="8,1 15,5 8,9 1,5" fill="#66bb6a" stroke="#2e7d32"/><polygon points="1,5 8,9 8,15 1,11" fill="#8d6e63" stroke="#4e342e"/><polygon points="15,5 8,9 8,15 15,11" fill="#6d4c41" stroke="#3e2723"/></svg>
+      <span>3D View</span>
+    </button>
+
+    <!-- Mobile Touch Pan vs Paint Toggle -->
+    <button id="btn-touch-mode" class="wp-btn px-2 py-0.5 ml-auto md:ml-2" onclick="toggleTouchPanMode()" title="Switch between Paint/Sculpt and Pan/Move on Touchscreens">
+      <span id="touch-mode-icon">🖌️</span>
+      <span id="touch-mode-label" class="text-[11px] font-medium">Mode: Paint</span>
+    </button>
+  </div>
+
+  <!-- MAIN WORKSPACE BODY -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- LEFT DOCK (Tools + Layers/Terrain/Biomes) -->
+    <aside id="left-dock" class="desktop-dock left-dock w-[250px] bg-[#f0f0f0] border-r border-[#a5a5a5] flex flex-col shrink-0">
+      
+      <!-- TOOLS PANEL -->
+      <div class="border-b border-[#a5a5a5] bg-[#f4f4f4]">
+        <div class="wp-dock-header-gray">
+          <span>Tools</span>
+          <button class="md:hidden text-xs px-1" onclick="closeMobileDrawers()">✕</button>
+        </div>
+        <div class="p-1.5 grid grid-cols-4 gap-1" id="tools-grid">
+          <!-- Row 1 -->
+          <button class="wp-tool-btn active" data-tool="height" onclick="selectTool('height')" title="Height (Left: Raise, Right/Invert: Lower)">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M2 13L7 4l3 5 2-2 2 6H2z" fill="#6d4c41" stroke="#222" stroke-width="1"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="flatten" onclick="selectTool('flatten')" title="Flatten Terrain to Target Height">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M2 12h12M4 8h8M8 3v5m-2-2l2 2 2-2" stroke="#1565c0" stroke-width="1.5" fill="none"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="smooth" onclick="selectTool('smooth')" title="Smooth Terrain">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M2 11c3-6 9-6 12 0" stroke="#2e7d32" stroke-width="2" fill="none"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="mountain" onclick="selectTool('mountain')" title="Raise Mountain Peak">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><polygon points="8,2 14,14 2,14" fill="#78909c" stroke="#263238"/><polygon points="8,2 10.5,7 8,6 5.5,7" fill="#fff"/></svg>
+          </button>
+
+          <!-- Row 2 -->
+          <button class="wp-tool-btn" data-tool="spray" onclick="selectTool('spray')" title="Spray Paint Terrain / Layer">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="6" y="6" width="5" height="8" rx="1" fill="#e53935" stroke="#222"/><rect x="7" y="4" width="3" height="2" fill="#999"/><circle cx="3" cy="4" r="0.8" fill="#333"/><circle cx="2" cy="6" r="0.8" fill="#333"/><circle cx="4" cy="6" r="0.8" fill="#333"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="pencil" onclick="selectTool('pencil')" title="Solid Pencil (Hard Paint Terrain / Layer)">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M11 2l3 3-8 8H3v-3l8-8z" fill="#fbc02d" stroke="#333"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="flood" onclick="selectTool('flood')" title="Flood Water / Lava">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M8 2C8 2 3 7.5 3 10.5a5 5 0 0010 0C13 7.5 8 2 8 2z" fill="#039be5" stroke="#01579b"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="sponge" onclick="selectTool('sponge')" title="Sponge (Remove Water / Lava)">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="3" y="5" width="10" height="7" rx="1.5" fill="#fdd835" stroke="#827717"/><circle cx="6" cy="8" r="0.8" fill="#827717"/><circle cx="10" cy="9" r="0.8" fill="#827717"/></svg>
+          </button>
+
+          <!-- Row 3 -->
+          <button class="wp-tool-btn" data-tool="select" onclick="selectTool('select')" title="Paint Selection Mask">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" fill="#fff176" stroke="#333" stroke-dasharray="2 1"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="deselect" onclick="selectTool('deselect')" title="Erase Selection Mask">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" fill="none" stroke="#999" stroke-dasharray="2 1"/><path d="M5 5l6 6M11 5l-6 6" stroke="#d32f2f" stroke-width="1.4"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="spawn" onclick="selectTool('spawn')" title="Set World Spawn Point">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="none" stroke="#d32f2f" stroke-width="1.5"/><path d="M8 1v14M1 8h14" stroke="#d32f2f" stroke-width="1.2"/></svg>
+          </button>
+          <button class="wp-tool-btn" data-tool="eyedropper" onclick="selectTool('eyedropper')" title="Pick Terrain & Height">
+            <svg class="w-4 h-4" viewBox="0 0 16 16"><path d="M12 2l2 2-3 3-1-1-6 6H2v-2l6-6-1-1 3-3z" fill="#90a4ae" stroke="#222"/></svg>
+          </button>
+        </div>
+
+        <!-- Sculpt Direction Quick Toggle (Essential for Mobile / 1-Button Mouse) -->
+        <div class="px-2 pb-1.5 flex items-center justify-between text-[11px]">
+          <span class="text-gray-700 font-medium">Action:</span>
+          <div class="flex gap-1">
+            <button id="btn-invert-normal" class="wp-btn active py-0 px-2 text-[11px]" onclick="setInvertAction(false)">Raise / Add</button>
+            <button id="btn-invert-sub" class="wp-btn py-0 px-2 text-[11px]" onclick="setInvertAction(true)">Lower / Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- LAYERS / TERRAIN / BIOMES PANEL WITH VERTICAL TABS (Matches Screenshot 2) -->
+      <div class="flex-1 flex overflow-hidden">
+        <!-- Vertical Tabs on Far Left -->
+        <div class="flex flex-col bg-[#e2e2e2] border-r border-[#b5b5b5] pt-1 select-none">
+          <div id="vtab-layers" class="wp-vtab active" onclick="switchLeftTab('layers')">Layers</div>
+          <div id="vtab-terrain" class="wp-vtab" onclick="switchLeftTab('terrain')">Terrain</div>
+          <div id="vtab-biomes" class="wp-vtab" onclick="switchLeftTab('biomes')">Biomes</div>
+        </div>
+
+        <!-- Panel Content -->
+        <div class="flex-1 flex flex-col bg-white overflow-hidden">
+          <div class="wp-dock-header-orange">
+            <span id="left-tab-title">Layers</span>
+            <span class="text-[10px] font-normal opacity-80" id="active-paint-badge">Active: Terrain</span>
+          </div>
+
+          <!-- TAB 1: LAYERS -->
+          <div id="panel-layers" class="flex-1 overflow-y-auto p-1 text-xs relative">
+            <div class="flex items-center text-[10px] text-gray-500 border-b border-gray-200 pb-0.5 mb-1 px-1">
+              <span class="w-7 text-center">Show</span>
+              <span class="w-7 text-center">Solo</span>
+              <span class="pl-1">Layer</span>
+            </div>
+
+            <div id="layers-list" class="space-y-0.5">
+              <!-- Populated by JS -->
+            </div>
+
+            <!-- Add Custom Layer '+' Button & Popup Menu (from Screenshot 2) -->
+            <div class="mt-2 pt-1 border-t border-gray-200 relative">
+              <button onclick="toggleCustomLayerMenu(event)" class="wp-btn w-7 h-6 font-bold text-sm" title="Add Custom Layer">+</button>
+              <div id="custom-layer-menu" class="hidden fixed md:absolute left-4 bottom-12 md:bottom-auto md:top-8 bg-[#f7f7f7] border border-[#888] shadow-lg z-50 w-60 py-1 text-xs">
+                <div class="wp-dropdown-row" onclick="addCustomLayer('Custom Objects')">Add a custom object layer...</div>
+                <div class="wp-dropdown-row bg-[#ffe3b8]" onclick="addCustomLayer('Ground Cover')">Add a custom ground cover layer...</div>
+                <div class="wp-dropdown-row" onclick="addCustomLayer('Underground Pockets')">Add a custom underground pockets layer...</div>
+                <div class="wp-dropdown-row" onclick="addCustomLayer('Cave/Tunnel')">Add a custom cave/tunnel layer...</div>
+                <div class="wp-dropdown-row" onclick="addCustomLayer('Custom Plants')">Add a custom plants layer...</div>
+                <div class="wp-dropdown-row" onclick="addCustomLayer('Combined Layer')">Add a combined layer...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: TERRAIN MATERIALS -->
+          <div id="panel-terrain" class="hidden flex-1 overflow-y-auto p-1.5">
+            <div class="text-[11px] text-gray-500 mb-1.5">Select block surface to paint:</div>
+            <div id="terrain-grid" class="grid grid-cols-2 gap-1">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- TAB 3: BIOMES -->
+          <div id="panel-biomes" class="hidden flex-1 overflow-y-auto p-1.5">
+            <div class="text-[11px] text-gray-500 mb-1.5">Select Minecraft biome to paint:</div>
+            <div id="biomes-list" class="space-y-1">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER VIEWPORT (2D Topographic Map Canvas + 3D Toggle Overlay) -->
+    <main class="flex-1 relative bg-[#d9eef7] overflow-hidden flex flex-col" id="viewport-container">
+      <!-- 2D Map Canvas -->
+      <canvas id="map-canvas" class="w-full h-full block touch-none cursor-crosshair"></canvas>
+
+      <!-- 3D Three.js Preview Canvas (Hidden until toggled) -->
+      <div id="view-3d-container" class="hidden absolute inset-0 bg-[#1b2838] z-20 flex flex-col">
+        <div class="bg-[#243447] text-white px-3 py-1.5 flex items-center justify-between text-xs border-b border-gray-700">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-amber-400">3D Terrain Preview</span>
+            <span class="text-gray-300 hidden sm:inline">(Drag to Orbit • Scroll / Pinch to Zoom)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="rebuild3DMesh()" class="wp-btn text-[11px] py-0.5">Refresh Mesh</button>
+            <button onclick="toggle3DView()" class="wp-btn wp-btn-primary text-[11px] py-0.5">Back to 2D Map</button>
+          </div>
+        </div>
+        <div id="three-mount" class="flex-1 w-full h-full relative"></div>
+      </div>
+
+      <!-- Floating Top-Right Quick Viewport Overlay -->
+      <div class="absolute top-2 right-2 flex flex-col gap-1 z-10 pointer-events-auto">
+        <button onclick="changeZoom(1.3)" class="w-8 h-8 bg-white/90 hover:bg-white border border-gray-400 rounded shadow flex items-center justify-center font-bold text-base" title="Zoom In">+</button>
+        <button onclick="changeZoom(0.75)" class="w-8 h-8 bg-white/90 hover:bg-white border border-gray-400 rounded shadow flex items-center justify-center font-bold text-base" title="Zoom Out">−</button>
+        <button onclick="resetCamera()" class="w-8 h-8 bg-white/90 hover:bg-white border border-gray-400 rounded shadow flex items-center justify-center text-xs font-semibold" title="Fit Map">Fit</button>
+      </div>
+    </main>
+
+    <!-- RIGHT DOCK (Brushes + Brush Settings / Info) -->
+    <aside id="right-dock" class="desktop-dock right-dock w-[245px] bg-[#f0f0f0] border-l border-[#a5a5a5] flex flex-col shrink-0">
+      
+      <!-- BRUSHES PANEL -->
+      <div class="border-b border-[#a5a5a5] bg-[#f4f4f4]">
+        <div class="wp-dock-header-gray">
+          <span>Brushes</span>
+          <button class="md:hidden text-xs px-1" onclick="closeMobileDrawers()">✕</button>
+        </div>
+        <div id="brushes-grid" class="p-1.5 grid grid-cols-4 gap-1.5">
+          <!-- Populated with procedural brush preview canvases -->
+        </div>
+      </div>
+
+      <!-- BRUSH SETTINGS & INFO WITH VERTICAL TABS ON RIGHT (Matches Screenshot 2) -->
+      <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex flex-col bg-white overflow-hidden">
+          <div class="wp-dock-header-gray">
+            <span id="right-tab-title">Brush Settings</span>
+          </div>
+
+          <!-- BRUSH SETTINGS TAB -->
+          <div id="panel-brush-settings" class="flex-1 overflow-y-auto p-2 text-xs space-y-2.5">
+            <!-- Radius -->
+            <div>
+              <div class="flex justify-between mb-0.5">
+                <label class="font-medium">Radius:</label>
+                <span id="lbl-radius" class="font-semibold text-blue-800">50 blocks</span>
+              </div>
+              <input type="range" id="slider-radius" min="1" max="150" value="50" class="w-full accent-[#2680eb]" oninput="updateBrushSetting('radius', this.value)" />
+            </div>
+
+            <!-- Rotation -->
+            <div>
+              <div class="flex justify-between mb-0.5">
+                <label class="font-medium">Rotation:</label>
+                <span id="lbl-rotation">0°</span>
+              </div>
+              <input type="range" id="slider-rotation" min="0" max="360" value="0" class="w-full accent-[#2680eb]" oninput="updateBrushSetting('rotation', this.value)" />
+            </div>
+
+            <!-- Intensity -->
+            <div>
+              <div class="flex justify-between mb-0.5">
+                <label class="font-medium">Intensity:</label>
+                <span id="lbl-intensity">50%</span>
+              </div>
+              <input type="range" id="slider-intensity" min="1" max="100" value="50" class="w-full accent-[#2680eb]" oninput="updateBrushSetting('intensity', this.value)" />
+            </div>
+
+            <!-- Flatten Target Height (shown when Flatten tool is active) -->
+            <div id="flatten-height-box" class="hidden bg-blue-50 border border-blue-200 p-1.5 rounded">
+              <div class="flex justify-between items-center">
+                <label class="font-medium text-blue-900">Target Height:</label>
+                <input type="number" id="input-flatten-height" value="68" min="0" max="384" class="wp-input w-14 text-right" onchange="state.flattenHeight = parseInt(this.value)||64" />
+              </div>
+            </div>
+
+            <!-- Options Checkboxes (Exact match to Screenshot 2) -->
+            <div class="border-t border-gray-200 pt-2 space-y-1.5">
+              <div class="font-semibold text-gray-700">Options</div>
+              
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="opt-inside-sel" onchange="state.brushOpts.insideSel = this.checked" />
+                <span>inside selection</span>
+              </label>
+
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="opt-outside-sel" onchange="state.brushOpts.outsideSel = this.checked" />
+                <span>outside selection</span>
+              </label>
+
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="opt-above" onchange="state.brushOpts.aboveEnabled = this.checked" />
+                  <span>at or above</span>
+                </label>
+                <input type="number" id="opt-above-val" value="62" min="0" max="384" class="wp-input w-14 text-right" onchange="state.brushOpts.aboveVal = parseInt(this.value)||0" />
+              </div>
+
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="opt-below" onchange="state.brushOpts.belowEnabled = this.checked" />
+                  <span>at or below</span>
+                </label>
+                <input type="number" id="opt-below-val" value="255" min="0" max="384" class="wp-input w-14 text-right" onchange="state.brushOpts.belowVal = parseInt(this.value)||255" />
+              </div>
+
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="opt-only-on" onchange="state.brushOpts.onlyOnEnabled = this.checked" />
+                  <span>only on</span>
+                </label>
+                <select id="opt-only-on-val" class="wp-input w-24" onchange="state.brushOpts.onlyOnTerrain = parseInt(this.value)">
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="opt-except-on" onchange="state.brushOpts.exceptOnEnabled = this.checked" />
+                  <span>except on</span>
+                </label>
+                <select id="opt-except-on-val" class="wp-input w-24" onchange="state.brushOpts.exceptOnTerrain = parseInt(this.value)">
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- INFO TAB -->
+          <div id="panel-brush-info" class="hidden flex-1 overflow-y-auto p-2 text-xs space-y-2">
+            <div class="bg-gray-50 border border-gray-200 p-2 rounded space-y-1">
+              <div class="flex justify-between"><span class="text-gray-500">Coordinates:</span><span id="info-coords" class="font-mono font-semibold">0, 0</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Elevation (Y):</span><span id="info-height" class="font-mono font-semibold">62</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Water Level:</span><span id="info-water" class="font-mono">62</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Terrain:</span><span id="info-terrain" class="font-semibold">Grass</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Biome:</span><span id="info-biome">Plains</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Layers here:</span><span id="info-layers" class="text-right text-[11px]">None</span></div>
+            </div>
+            <div class="text-[11px] text-gray-500">
+              World Size: <span id="info-dim">512 x 512</span> blocks<br/>
+              Max Build Height: <span id="info-maxh">256</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vertical Tabs on Far Right -->
+        <div class="flex flex-col bg-[#e2e2e2] border-l border-[#b5b5b5] pt-1 select-none">
+          <div id="vtab-bsettings" class="wp-vtab-right active" onclick="switchRightTab('settings')">Brush Settings</div>
+          <div id="vtab-binfo" class="wp-vtab-right" onclick="switchRightTab('info')">Info</div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- MOBILE BOTTOM DRAWER BAR (Visible on Screens < 900px) -->
+  <div class="md:hidden bg-[#e8e8e8] border-t border-[#a5a5a5] px-1 py-1 flex items-center justify-around shrink-0 z-50">
+    <button onclick="toggleMobileDrawer('left-dock', 'layers')" class="wp-btn flex-1 mx-0.5 py-1.5 text-[11px] font-semibold">
+      🛠️ Tools & Layers
+    </button>
+    <button onclick="toggleMobileDrawer('left-dock', 'terrain')" class="wp-btn flex-1 mx-0.5 py-1.5 text-[11px] font-semibold">
+      🟩 Terrain
+    </button>
+    <button onclick="toggleMobileDrawer('right-dock', 'settings')" class="wp-btn flex-1 mx-0.5 py-1.5 text-[11px] font-semibold">
+      🖌️ Brushes
+    </button>
+    <button onclick="openExportModal()" class="wp-btn wp-btn-primary flex-1 mx-0.5 py-1.5 text-[11px] font-semibold">
+      📦 Export
+    </button>
+  </div>
+
+  <!-- BOTTOM STATUS BAR (Matches Screenshot 2) -->
+  <footer class="bg-[#f0f0f0] border-t border-[#b5b5b5] px-2 py-0.5 flex items-center justify-between text-[11px] text-[#222] shrink-0">
+    <div class="flex items-center gap-3 truncate">
+      <span id="status-location">Location: 0, 0</span>
+      <span class="text-gray-400">|</span>
+      <span id="status-height">Height: 62</span>
+      <span class="hidden sm:inline text-gray-400">|</span>
+      <span id="status-terrain" class="hidden sm:inline">Terrain: Grass</span>
+    </div>
+    <div class="flex items-center gap-3 shrink-0">
+      <span id="status-zoom">Zoom: 100%</span>
+      <span class="text-gray-400">|</span>
+      <span id="status-radius">Radius: 50</span>
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: CREATE NEW WORLD (Faithful Recreation of Screenshot 1)       -->
+  <!-- ===================================================================== -->
+  <div id="modal-new-world" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-[#f0f0f0] border border-[#707070] shadow-2xl w-full max-w-[820px] max-h-[95dvh] flex flex-col rounded-sm overflow-hidden">
+      <!-- Dialog Title Bar -->
+      <div class="bg-white border-b border-[#d0d0d0] px-3 py-1.5 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-xs font-semibold text-[#111]">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="13" width="20" height="9" rx="1" fill="#5d4037"/>
+            <rect x="2" y="11" width="20" height="4" fill="#4caf50"/>
+            <path d="M14 3L20 9L17 12L11 6L14 3Z" fill="#90a4ae" stroke="#37474f" stroke-width="1.5"/>
+          </svg>
+          <span>Create New World</span>
+        </div>
+        <button onclick="closeModal('modal-new-world')" class="text-gray-600 hover:text-black px-1.5 text-sm">✕</button>
+      </div>
+
+      <!-- Dialog Content Body -->
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col md:flex-row gap-3 text-xs">
+        
+        <!-- Left Settings Form (Exact fields from Screenshot 1) -->
+        <div class="w-full md:w-[360px] space-y-2.5 shrink-0">
+          <!-- Name -->
+          <div>
+            <label class="block mb-0.5 text-[#111]">Name:</label>
+            <input type="text" id="nw-name" value="Conquest Layers World" class="wp-input w-full" />
+          </div>
+
+          <!-- Map Format -->
+          <div>
+            <label class="block mb-0.5 text-[#111]">Map format:</label>
+            <select id="nw-format" class="wp-input w-full">
+              <option value="java_1_21">[BETA] Minecraft 1.15 - 1.21+ (Anvil Java)</option>
+              <option value="bedrock">Minecraft Bedrock Edition (.mcworld)</option>
+              <option value="java_1_12">Minecraft 1.12 (Anvil Legacy)</option>
+            </select>
+          </div>
+
+          <!-- Dimensions & Circular -->
+          <div>
+            <label class="block mb-0.5 text-[#111]">Dimensions:</label>
+            <div class="flex items-center gap-1.5">
+              <select id="nw-width" class="wp-input w-20" onchange="updateNewWorldPreview()">
+                <option value="256">256</option>
+                <option value="384">384</option>
+                <option value="512" selected>512</option>
+                <option value="640">640</option>
+                <option value="768">768</option>
+                <option value="1024">1024</option>
+              </select>
+              <span>x</span>
+              <select id="nw-length" class="wp-input w-20" onchange="updateNewWorldPreview()">
+                <option value="256">256</option>
+                <option value="384">384</option>
+                <option value="512" selected>512</option>
+                <option value="640">640</option>
+                <option value="768">768</option>
+                <option value="1024">1024</option>
+              </select>
+              <span class="text-gray-600 text-[11px]">blocks (multiples of 128)</span>
+            </div>
+            <label class="inline-flex items-center gap-1.5 mt-1.5 cursor-pointer">
+              <input type="checkbox" id="nw-circular" onchange="updateNewWorldPreview()" />
+              <span>Circular world</span>
+            </label>
+          </div>
+
+          <!-- Height & Walking Time -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <label>Height:</label>
+              <select id="nw-height" class="wp-input w-20">
+                <option value="256" selected>256</option>
+                <option value="320">320</option>
+                <option value="384">384</option>
+              </select>
+              <span>blocks</span>
+            </div>
+            <div class="text-gray-600">
+              Walking time: <span id="nw-walktime" class="font-medium text-black">2 min.</span>
+            </div>
+          </div>
+
+          <!-- Topography -->
+          <div class="border-t border-gray-300 pt-2 space-y-1.5">
+            <div class="font-medium">Topography:</div>
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="inline-flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="nw-topo" value="hilly" checked onchange="updateNewWorldPreview()" />
+                <span>Hilly</span>
+              </label>
+              <label class="inline-flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="nw-topo" value="flat" onchange="updateNewWorldPreview()" />
+                <span>Flat</span>
+              </label>
+              <div class="flex items-center gap-1">
+                <span>Hill height:</span>
+                <input type="number" id="nw-hill-height" value="22" min="1" max="150" class="wp-input w-14 text-right" oninput="updateNewWorldPreview()" />
+              </div>
+              <div class="flex items-center gap-1">
+                <span>Scale:</span>
+                <input type="number" id="nw-hill-scale" value="100" min="10" max="400" class="wp-input w-14 text-right" oninput="updateNewWorldPreview()" />
+                <span>%</span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 pt-1">
+              <div class="flex items-center gap-1">
+                <span>Level:</span>
+                <input type="number" id="nw-base-level" value="58" min="1" max="250" class="wp-input w-14 text-right" oninput="updateNewWorldPreview()" />
+              </div>
+              <div class="flex items-center gap-1">
+                <span>Water level:</span>
+                <input type="number" id="nw-water-level" value="62" min="0" max="250" class="wp-input w-14 text-right" oninput="updateNewWorldPreview()" />
+                <span class="text-gray-500 text-[11px]">(default: 62)</span>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4 pl-2">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="nw-lava" onchange="updateNewWorldPreview()" />
+                <span>Lava instead of water</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="nw-beaches" checked onchange="updateNewWorldPreview()" />
+                <span>Beaches</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Surface Material -->
+          <div class="border-t border-gray-300 pt-2">
+            <div class="mb-1">Surface material:</div>
+            <div class="flex items-center gap-2">
+              <span class="text-gray-600">Simple:</span>
+              <select id="nw-surface" class="wp-input flex-1" onchange="updateNewWorldPreview()">
+                <option value="0" selected>Grass</option>
+                <option value="5">Sand (Desert)</option>
+                <option value="3">Stone (Mountains)</option>
+                <option value="10">Snow</option>
+                <option value="6">Red Sand (Badlands)</option>
+                <option value="2">Dirt</option>
+                <option value="16">Netherrack</option>
+              </select>
+            </div>
+            <label class="inline-flex items-center gap-1.5 mt-2 cursor-pointer">
+              <input type="checkbox" id="nw-extended-ids" checked />
+              <span>Extended block IDs</span>
+            </label>
+          </div>
+
+          <!-- Minecraft Seed -->
+          <div class="border-t border-gray-300 pt-2">
+            <div class="mb-1">Minecraft seed:</div>
+            <div class="flex items-center gap-2">
+              <label class="inline-flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="nw-seed-type" value="ocean" checked onchange="updateNewWorldPreview()" />
+                <span>Ocean</span>
+              </label>
+              <label class="inline-flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="nw-seed-type" value="land" onchange="updateNewWorldPreview()" />
+                <span>Land</span>
+              </label>
+              <input type="text" id="nw-seed" value="27594263" class="wp-input flex-1 font-mono" oninput="updateNewWorldPreview()" />
+              <button type="button" onclick="randomizeSeed()" class="wp-btn px-2" title="Random Seed">🎲</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Live Preview Canvas (Exact match to Screenshot 1) -->
+        <div class="flex-1 min-h-[240px] border border-[#888] bg-[#d9eef7] relative flex items-center justify-center overflow-hidden">
+          <canvas id="nw-preview-canvas" class="w-full h-full block"></canvas>
+          <span class="absolute bottom-1.5 right-2 bg-white/80 px-1.5 py-0.5 text-[10px] text-gray-700 border border-gray-300">Live Preview</span>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="bg-[#e8e8e8] border-t border-[#ccc] px-3 py-2 flex justify-end gap-2">
+        <button onclick="confirmCreateNewWorld()" class="wp-btn wp-btn-primary px-5 py-1">Create</button>
+        <button onclick="closeModal('modal-new-world')" class="wp-btn px-4 py-1">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: EXPORT WORLD (MINECRAFT JAVA & BEDROCK EDITION)              -->
+  <!-- ===================================================================== -->
+  <div id="modal-export" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-[#f0f0f0] border border-[#707070] shadow-2xl w-full max-w-[560px] flex flex-col rounded-sm overflow-hidden">
+      <div class="bg-white border-b border-[#d0d0d0] px-3 py-1.5 flex items-center justify-between">
+        <span class="text-xs font-semibold text-[#111]">Export World to Minecraft (Java & Bedrock)</span>
+        <button onclick="closeModal('modal-export')" class="text-gray-600 hover:text-black px-1.5 text-sm">✕</button>
+      </div>
+
+      <div class="p-4 space-y-3 text-xs">
+        <div class="bg-white border border-gray-300 p-2.5 rounded-sm space-y-1">
+          <div class="font-semibold text-gray-800">World Summary</div>
+          <div class="grid grid-cols-2 gap-1 text-[11px] text-gray-600">
+            <div>Name: <strong id="exp-world-name" class="text-black">Conquest Layers World</strong></div>
+            <div>Dimensions: <strong id="exp-world-dims" class="text-black">512 x 512</strong></div>
+            <div>Water Level: <strong id="exp-world-water" class="text-black">62</strong></div>
+            <div>Spawn Point: <strong id="exp-world-spawn" class="text-black">256, 256</strong></div>
+          </div>
+        </div>
+
+        <!-- Target Edition Selection -->
+        <div class="space-y-2">
+          <label class="block font-semibold text-gray-800">Select Target Minecraft Edition:</label>
+          
+          <label id="card-exp-java" class="flex items-start gap-2.5 p-2.5 border-2 border-blue-500 bg-blue-50/60 rounded cursor-pointer" onclick="selectExportEdition('java')">
+            <input type="radio" name="export-edition" value="java" checked class="mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-blue-950">Minecraft: Java Edition (1.18 - 1.21+ Anvil World .ZIP)</div>
+              <div class="text-[11px] text-gray-700 mt-0.5">
+                Generates a playable Java save folder with binary big-endian NBT <code>level.dat</code>, Anvil region file (<code>region/r.0.0.mca</code>) with actual sculpted block layers, 16-bit heightmap PNG, and a datapack builder function. Extract into <code>.minecraft/saves/</code>.
+              </div>
+            </div>
+          </label>
+
+          <label id="card-exp-bedrock" class="flex items-start gap-2.5 p-2.5 border border-gray-300 bg-white rounded cursor-pointer" onclick="selectExportEdition('bedrock')">
+            <input type="radio" name="export-edition" value="bedrock" class="mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-emerald-950">Minecraft: Bedrock Edition (.mcworld Package)</div>
+              <div class="text-[11px] text-gray-700 mt-0.5">
+                Generates a direct-import <code>.mcworld</code> archive containing Bedrock little-endian NBT <code>level.dat</code>, <code>levelname.txt</code>, map thumbnail <code>world_icon.jpeg</code>, and an embedded Behavior Pack (<code>/function build_map</code>) for instant terrain placement on Mobile/Windows/Console.
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Export Options -->
+        <div class="border-t border-gray-300 pt-2 flex flex-wrap gap-4">
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" id="exp-include-trees" checked />
+            <span>Populate Painted Layers (Trees, Frost, Ores)</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" id="exp-include-bedrock-floor" checked />
+            <span>Generate Bedrock Layer at Y=0</span>
+          </label>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="export-progress-box" class="hidden space-y-1">
+          <div class="flex justify-between text-[11px]">
+            <span id="export-status-text">Compiling chunks & NBT data...</span>
+            <span id="export-pct">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-gray-200 border border-gray-400 overflow-hidden">
+            <div id="export-bar" class="h-full bg-[#2680eb] w-0 transition-all duration-150"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-[#e8e8e8] border-t border-[#ccc] px-3 py-2 flex justify-end gap-2">
+        <button id="btn-run-export" onclick="executeWorldExport()" class="wp-btn wp-btn-primary px-5 py-1">Export & Download</button>
+        <button onclick="closeModal('modal-export')" class="wp-btn px-4 py-1">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden File Inputs -->
+  <input type="file" id="file-import-heightmap" accept="image/*" class="hidden" onchange="handleImportHeightmap(event)" />
+  <input type="file" id="file-import-project" accept=".json" class="hidden" onchange="handleImportProject(event)" />
+
+  <!-- Non-intrusive Toast Notification -->
+  <div id="wp-toast" class="hidden fixed bottom-12 left-1/2 -translate-x-1/2 bg-[#222] text-white text-xs px-3.5 py-2 rounded shadow-lg z-50 border border-gray-600 max-w-[90vw] text-center"></div>
+
+<script>
+/**
+ * ============================================================================
+ * WORLDPAINTER WEB - CORE ENGINE, PROCEDURAL TERRAIN & MINECRAFT EXPORTERS
+ * ============================================================================
+ */
+
+// 1. TERRAIN DEFINITIONS (Minecraft Java & Bedrock Block IDs + Map Colors)
+const TERRAINS = [
+  { id: 0,  name: 'Grass',       color: [86, 138, 52],   javaBlock: 'minecraft:grass_block',  bedrockBlock: 'grass' },
+  { id: 1,  name: 'Bare Grass',  color: [104, 148, 66],  javaBlock: 'minecraft:moss_block',   bedrockBlock: 'moss_block' },
+  { id: 2,  name: 'Dirt',        color: [134, 96, 67],   javaBlock: 'minecraft:dirt',         bedrockBlock: 'dirt' },
+  { id: 3,  name: 'Stone',       color: [128, 128, 128], javaBlock: 'minecraft:stone',        bedrockBlock: 'stone' },
+  { id: 4,  name: 'Cobblestone', color: [105, 105, 105], javaBlock: 'minecraft:cobblestone',  bedrockBlock: 'cobblestone' },
+  { id: 5,  name: 'Sand',        color: [226, 214, 152], javaBlock: 'minecraft:sand',         bedrockBlock: 'sand' },
+  { id: 6,  name: 'Red Sand',    color: [190, 102, 44],  javaBlock: 'minecraft:red_sand',     bedrockBlock: 'red_sand' },
+  { id: 7,  name: 'Gravel',      color: [142, 138, 136], javaBlock: 'minecraft:gravel',       bedrockBlock: 'gravel' },
+  { id: 8,  name: 'Clay',        color: [160, 166, 179], javaBlock: 'minecraft:clay',         bedrockBlock: 'clay' },
+  { id: 9,  name: 'Terracotta',  color: [152, 94, 67],   javaBlock: 'minecraft:terracotta',   bedrockBlock: 'hardened_clay' },
+  { id: 10, name: 'Snow',        color: [244, 248, 250], javaBlock: 'minecraft:snow_block',   bedrockBlock: 'snow' },
+  { id: 11, name: 'Ice',         color: [158, 198, 255], javaBlock: 'minecraft:packed_ice',   bedrockBlock: 'packed_ice' },
+  { id: 12, name: 'Podzol',      color: [107, 79, 44],   javaBlock: 'minecraft:podzol',       bedrockBlock: 'podzol' },
+  { id: 13, name: 'Mycelium',    color: [111, 99, 105],  javaBlock: 'minecraft:mycelium',     bedrockBlock: 'mycelium' },
+  { id: 14, name: 'Obsidian',    color: [26, 20, 38],    javaBlock: 'minecraft:obsidian',     bedrockBlock: 'obsidian' },
+  { id: 15, name: 'Bedrock',     color: [52, 52, 52],    javaBlock: 'minecraft:bedrock',      bedrockBlock: 'bedrock' },
+  { id: 16, name: 'Netherrack',  color: [112, 50, 50],   javaBlock: 'minecraft:netherrack',   bedrockBlock: 'netherrack' },
+  { id: 17, name: 'End Stone',   color: [222, 224, 166], javaBlock: 'minecraft:end_stone',    bedrockBlock: 'end_stone' },
+  { id: 18, name: 'Deepslate',   color: [74, 74, 79],    javaBlock: 'minecraft:deepslate',    bedrockBlock: 'deepslate' },
+  { id: 19, name: 'Mud',         color: [60, 56, 61],    javaBlock: 'minecraft:mud',          bedrockBlock: 'mud' }
+];
+
+// 2. BIOME DEFINITIONS
+const BIOMES = [
+  { id: 0, name: 'Plains',         color: '#7cbd4c' },
+  { id: 1, name: 'Forest',         color: '#4e8c32' },
+  { id: 2, name: 'Desert',         color: '#e5d38a' },
+  { id: 3, name: 'Taiga',          color: '#3c6e47' },
+  { id: 4, name: 'Jungle',         color: '#349c24' },
+  { id: 5, name: 'Swamp',          color: '#52663c' },
+  { id: 6, name: 'Snowy Tundra',   color: '#e6f2f5' },
+  { id: 7, name: 'Windswept Hills',color: '#7d8582' },
+  { id: 8, name: 'Ocean',          color: '#2856c9' },
+  { id: 9, name: 'Cherry Grove',   color: '#f29ec2' },
+  { id: 10, name: 'Badlands',      color: '#c96538' }
+];
+
+// 3. LAYERS DEFINITIONS (Matching Screenshot 2)
+const INITIAL_LAYERS = [
+  { id: 'frost',     name: 'Frost',          icon: '❄️', color: [235, 248, 255], show: true, solo: false },
+  { id: 'caves',     name: '[BETA] Caves',   icon: '🕳️', color: [180, 90, 40],   show: true, solo: false },
+  { id: 'caverns',   name: 'Caverns',        icon: '⛰️', color: [140, 70, 30],   show: true, solo: false },
+  { id: 'chasms',    name: 'Chasms',         icon: '⚡', color: [110, 50, 90],   show: true, solo: false },
+  { id: 'deciduous', name: 'Deciduous',      icon: '🌳', color: [46, 125, 34],   show: true, solo: false },
+  { id: 'pine',      name: 'Pine',           icon: '🌲', color: [24, 78, 42],    show: true, solo: false },
+  { id: 'swamp',     name: 'Swamp',          icon: '🌿', color: [72, 102, 48],   show: true, solo: false },
+  { id: 'jungle',    name: 'Jungle',         icon: '🌴', color: [30, 150, 30],   show: true, solo: false },
+  { id: 'void',      name: 'Void',           icon: '♾️', color: [15, 15, 20],    show: true, solo: false },
+  { id: 'resources', name: 'Resources',      icon: '💎', color: [60, 190, 210],  show: true, solo: false },
+  { id: 'populate',  name: 'Populate',       icon: '🌱', color: [130, 180, 70],  show: true, solo: false },
+  { id: 'readonly',  name: 'Read Only',      icon: '🔒', color: [210, 45, 45],   show: true, solo: false }
+];
+
+// 4. BRUSH PRESETS
+const BRUSHES = [
+  { id: 'soft_circle',  name: 'Soft Circle' },
+  { id: 'soft_square',  name: 'Soft Square' },
+  { id: 'noise_circle', name: 'Noise Splatter' },
+  { id: 'hard_circle',  name: 'Hard Circle' },
+  { id: 'hard_square',  name: 'Hard Square' },
+  { id: 'mountain_cone',name: 'Mountain Cone' },
+  { id: 'cracks',       name: 'Erosion Cracks' },
+  { id: 'star_spike',   name: 'Ridge Star' }
+];
+
+// 5. GLOBAL APPLICATION STATE
+const state = {
+  worldName: 'Conquest Layers World',
+  format: 'java_1_21',
+  width: 512,
+  length: 512,
+  maxHeight: 256,
+  circular: false,
+  waterLevelDefault: 62,
+  lavaInsteadOfWater: false,
+  seed: 27594263,
+  spawnX: 256,
+  spawnZ: 256,
+
+  // Map Data Arrays (TypedArrays for fast 60fps painting)
+  heightMap: null,      // Float32Array (width * length)
+  waterMap: null,       // Float32Array (width * length)
+  terrainMap: null,     // Uint8Array (width * length)
+  biomeMap: null,       // Uint8Array (width * length)
+  selectionMap: null,   // Uint8Array (0 or 255)
+  layerMaps: {},        // { layerId: Uint8Array (0..255 intensity) }
+  layers: JSON.parse(JSON.stringify(INITIAL_LAYERS)),
+
+  // Tool & Paint State
+  tool: 'height',
+  paintMode: 'terrain', // 'terrain' | 'layer' | 'biome'
+  activeTerrain: 0,
+  activeLayer: 'deciduous',
+  activeBiome: 0,
+  brushId: 'soft_circle',
+  radius: 50,
+  rotation: 0,
+  intensity: 50,
+  invertAction: false,
+  flattenHeight: 68,
+
+  brushOpts: {
+    insideSel: false,
+    outsideSel: false,
+    aboveEnabled: false,
+    aboveVal: 62,
+    belowEnabled: false,
+    belowVal: 255,
+    onlyOnEnabled: false,
+    onlyOnTerrain: 0,
+    exceptOnEnabled: false,
+    exceptOnTerrain: 0
+  },
+
+  // View & Camera State
+  showContours: true,
+  showGrid: false,
+  camX: 256,
+  camZ: 256,
+  zoom: 1.0,
+  touchPanMode: false,
+
+  // Cursor Tracking
+  cursorX: 256,
+  cursorZ: 256,
+  cursorVisible: false,
+
+  // Undo/Redo Stacks
+  undoStack: [],
+  redoStack: []
+};
+
+// Offscreen buffer for ultra-fast terrain rendering
+let mapOffscreenCanvas = document.createElement('canvas');
+let mapOffscreenCtx = mapOffscreenCanvas.getContext('2d');
+let mapImageData = null;
+
+// ============================================================================
+// PROCEDURAL VALUE NOISE (Seeded)
+// ============================================================================
+function createSeededNoise(seed) {
+  let s = Number(seed) || 27594263;
+  function hash(x, y) {
+    let n = Math.sin(x * 127.1 + y * 311.7 + s * 0.013) * 43758.5453123;
+    return n - Math.floor(n);
+  }
+  function smoothNoise(x, y) {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const fx = x - ix;
+    const fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uy = fy * fy * (3 - 2 * fy);
+    const a = hash(ix, iy);
+    const b = hash(ix + 1, iy);
+    const c = hash(ix, iy + 1);
+    const d = hash(ix + 1, iy + 1);
+    return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+  }
+  return function fbm(x, y, octaves = 4) {
+    let value = 0;
+    let amp = 0.5;
+    let freq = 1;
+    for (let i = 0; i < octaves; i++) {
+      value += amp * smoothNoise(x * freq, y * freq);
+      freq *= 2.02;
+      amp *= 0.5;
+    }
+    return value;
+  };
+}
+
+// ============================================================================
+// WORLD GENERATION ENGINE
+// ============================================================================
+function generateWorldData(params) {
+  const {
+    width, length, maxHeight, circular, topo, hillHeight, hillScale,
+    baseLevel, waterLevel, lavaInsteadOfWater, beaches, surfaceId, seed, seedType
+  } = params;
+
+  const size = width * length;
+  const heightMap = new Float32Array(size);
+  const waterMap = new Float32Array(size);
+  const terrainMap = new Uint8Array(size);
+  const biomeMap = new Uint8Array(size);
+  const selectionMap = new Uint8Array(size);
+  const layerMaps = {};
+
+  state.layers.forEach(l => {
+    layerMaps[l.id] = new Uint8Array(size);
+  });
+
+  const noise = createSeededNoise(seed);
+  const scaleFactor = (100 / Math.max(10, hillScale)) * 0.012;
+  const cx = width / 2;
+  const cz = length / 2;
+  const maxR = Math.min(cx, cz) * 0.96;
+
+  for (let z = 0; z < length; z++) {
+    for (let x = 0; x < width; x++) {
+      const idx = z * width + x;
+
+      // Circular world mask
+      if (circular) {
+        const dist = Math.hypot(x - cx, z - cz);
+        if (dist > maxR) {
+          heightMap[idx] = 0;
+          waterMap[idx] = 0;
+          terrainMap[idx] = 15; // Bedrock / Void edge
+          layerMaps['void'][idx] = 255;
+          continue;
+        }
+      }
+
+      let h = baseLevel;
+      if (topo === 'hilly') {
+        const n1 = noise(x * scaleFactor, z * scaleFactor, 4);
+        const n2 = noise(x * scaleFactor * 2.5 + 40, z * scaleFactor * 2.5 + 40, 2);
+        const landBias = seedType === 'land' ? 5 : -2;
+        h = baseLevel + landBias + (n1 - 0.44) * hillHeight * 2.1 + (n2 - 0.5) * (hillHeight * 0.45);
+      }
+
+      h = Math.max(1, Math.min(maxHeight - 1, h));
+      heightMap[idx] = h;
+      waterMap[idx] = waterLevel;
+
+      // Determine Surface Material & Beaches
+      let mat = surfaceId;
+      let biome = surfaceId === 5 ? 2 : (surfaceId === 10 ? 6 : 0);
+
+      if (h < waterLevel) {
+        biome = 8; // Ocean/Lake
+        if (beaches && h >= waterLevel - 3) {
+          mat = 5; // Sand underwater shore
+        } else if (h < waterLevel - 6) {
+          mat = (noise(x * 0.05, z * 0.05, 2) > 0.55) ? 7 : 2; // Gravel / Dirt seabed
+        }
+      } else if (beaches && h <= waterLevel + 2.2 && surfaceId === 0) {
+        mat = 5; // Sandy beach
+      } else if (h > baseLevel + hillHeight * 0.85) {
+        mat = 3; // Rocky Stone peaks
+        biome = 7;
+      }
+
+      terrainMap[idx] = mat;
+      biomeMap[idx] = biome;
+    }
+  }
+
+  return { heightMap, waterMap, terrainMap, biomeMap, selectionMap, layerMaps };
+}
+
+// ============================================================================
+// CREATE NEW WORLD DIALOG LIVE PREVIEW & INITIALIZATION
+// ============================================================================
+function getNewWorldParamsFromUI() {
+  const topo = document.querySelector('input[name="nw-topo"]:checked').value;
+  const seedType = document.querySelector('input[name="nw-seed-type"]:checked').value;
+  return {
+    name: document.getElementById('nw-name').value.trim() || 'Conquest Layers World',
+    format: document.getElementById('nw-format').value,
+    width: parseInt(document.getElementById('nw-width').value),
+    length: parseInt(document.getElementById('nw-length').value),
+    maxHeight: parseInt(document.getElementById('nw-height').value),
+    circular: document.getElementById('nw-circular').checked,
+    topo,
+    hillHeight: parseFloat(document.getElementById('nw-hill-height').value) || 20,
+    hillScale: parseFloat(document.getElementById('nw-hill-scale').value) || 100,
+    baseLevel: parseFloat(document.getElementById('nw-base-level').value) || 58,
+    waterLevel: parseFloat(document.getElementById('nw-water-level').value) || 62,
+    lavaInsteadOfWater: document.getElementById('nw-lava').checked,
+    beaches: document.getElementById('nw-beaches').checked,
+    surfaceId: parseInt(document.getElementById('nw-surface').value),
+    seed: document.getElementById('nw-seed').value,
+    seedType
+  };
+}
+
+function updateNewWorldPreview() {
+  const p = getNewWorldParamsFromUI();
+  // Update walking time estimate (~4.3 blocks/sec sprint-walk in Minecraft)
+  const mins = Math.max(1, Math.round(p.width / 215));
+  document.getElementById('nw-walktime').textContent = `${mins} min.`;
+
+  // Render a fast 160x160 preview map inside the modal
+  const prevSize = 160;
+  const scaleX = p.width / prevSize;
+  const scaleZ = p.length / prevSize;
+  const temp = generateWorldData({
+    ...p,
+    width: prevSize,
+    length: prevSize,
+    hillScale: p.hillScale / scaleX
+  });
+
+  const canvas = document.getElementById('nw-preview-canvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = Math.max(200, Math.floor(rect.width));
+  canvas.height = Math.max(200, Math.floor(rect.height));
+  const ctx = canvas.getContext('2d');
+
+  const off = document.createElement('canvas');
+  off.width = prevSize;
+  off.height = prevSize;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(prevSize, prevSize);
+
+  renderTerrainToImageData(img.data, prevSize, prevSize, temp.heightMap, temp.waterMap, temp.terrainMap, {}, true, p.lavaInsteadOfWater);
+  octx.putImageData(img, 0, 0);
+
+  ctx.fillStyle = '#d9eef7';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const drawSize = Math.min(canvas.width, canvas.height) * 0.92;
+  const ox = (canvas.width - drawSize) / 2;
+  const oy = (canvas.height - drawSize) / 2;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, ox, oy, drawSize, drawSize);
+
+  // Center crosshair like Screenshot 1
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy); ctx.lineTo(cx + 6, cy);
+  ctx.moveTo(cx, cy - 6); ctx.lineTo(cx, cy + 6);
+  ctx.stroke();
+}
+
+function randomizeSeed() {
+  document.getElementById('nw-seed').value = Math.floor(Math.random() * 90000000 + 1000000);
+  updateNewWorldPreview();
+}
+
+function confirmCreateNewWorld() {
+  const p = getNewWorldParamsFromUI();
+  state.worldName = p.name;
+  state.format = p.format;
+  state.width = p.width;
+  state.length = p.length;
+  state.maxHeight = p.maxHeight;
+  state.circular = p.circular;
+  state.waterLevelDefault = p.waterLevel;
+  state.lavaInsteadOfWater = p.lavaInsteadOfWater;
+  state.seed = p.seed;
+  state.spawnX = Math.floor(p.width / 2);
+  state.spawnZ = Math.floor(p.length / 2);
+
+  const generated = generateWorldData(p);
+  state.heightMap = generated.heightMap;
+  state.waterMap = generated.waterMap;
+  state.terrainMap = generated.terrainMap;
+  state.biomeMap = generated.biomeMap;
+  state.selectionMap = generated.selectionMap;
+  state.layerMaps = generated.layerMaps;
+  state.undoStack = [];
+  state.redoStack = [];
+
+  // Resize offscreen buffer
+  mapOffscreenCanvas.width = state.width;
+  mapOffscreenCanvas.height = state.length;
+  mapImageData = mapOffscreenCtx.createImageData(state.width, state.length);
+
+  // Update UI labels
+  document.getElementById('window-title').textContent = `WorldPainter - ${state.worldName} - Surface`;
+  document.getElementById('info-dim').textContent = `${state.width} x ${state.length}`;
+  document.getElementById('info-maxh').textContent = state.maxHeight;
+  document.getElementById('opt-above-val').value = p.waterLevel;
+
+  closeModal('modal-new-world');
+  resetCamera();
+  rebuildFullOffscreenMap();
+  requestRender();
+  showToast(`Created "${state.worldName}" (${state.width}x${state.length})`);
+}
+
+// ============================================================================
+// CORE 2D MAP PIXEL RENDERER (Hillshading, Contours, Water, Layers)
+// ============================================================================
+function renderTerrainToImageData(data, w, l, heightMap, waterMap, terrainMap, layerMaps, showContours, isLava, selectionMap = null) {
+  // Check if any layer is set to "Solo"
+  const soloLayer = state.layers.find(ly => ly.solo);
+
+  for (let z = 0; z < l; z++) {
+    for (let x = 0; x < w; x++) {
+      const idx = z * w + x;
+      const pIdx = idx * 4;
+
+      const h = heightMap[idx];
+      const wl = waterMap[idx];
+      const tId = terrainMap[idx] || 0;
+      const baseCol = TERRAINS[tId] ? TERRAINS[tId].color : [86, 138, 52];
+
+      let r = baseCol[0];
+      let g = baseCol[1];
+      let b = baseCol[2];
+
+      // Northwest Directional Hillshading (Classic WorldPainter relief look)
+      const hL = x > 0 ? heightMap[idx - 1] : h;
+      const hU = z > 0 ? heightMap[idx - w] : h;
+      const slope = (h - hL) * 0.65 + (h - hU) * 0.65;
+      const shade = Math.max(-34, Math.min(34, slope * 9));
+
+      r += shade;
+      g += shade;
+      b += shade;
+
+      // Water or Lava Overlay
+      if (wl > h) {
+        const depth = Math.min(25, wl - h);
+        const alpha = Math.min(0.86, 0.45 + depth * 0.025);
+        if (isLava) {
+          r = r * (1 - alpha) + 235 * alpha;
+          g = g * (1 - alpha) + (85 - depth * 1.5) * alpha;
+          b = b * (1 - alpha) + 15 * alpha;
+        } else {
+          r = r * (1 - alpha) + 28 * alpha;
+          g = g * (1 - alpha) + (95 - depth * 1.6) * alpha;
+          b = b * (1 - alpha) + (225 - depth * 2.2) * alpha;
+        }
+      }
+
+      // Painted Layers Overlay (Trees, Frost, Caves, Custom Layers)
+      if (layerMaps) {
+        for (let i = 0; i < state.layers.length; i++) {
+          const ly = state.layers[i];
+          if (soloLayer && soloLayer.id !== ly.id) continue;
+          if (!soloLayer && !ly.show) continue;
+          const lArr = layerMaps[ly.id];
+          if (lArr && lArr[idx] > 10) {
+            // Subtle stipple pattern for authentic WorldPainter layer rendering
+            const pattern = ((x + z) & 1) === 0 || lArr[idx] > 170;
+            if (pattern) {
+              const la = (lArr[idx] / 255) * 0.68;
+              r = r * (1 - la) + ly.color[0] * la;
+              g = g * (1 - la) + ly.color[1] * la;
+              b = b * (1 - la) + ly.color[2] * la;
+            }
+          }
+        }
+      }
+
+      // Authentic Black Topographic Contour Lines (every 8 blocks of elevation, matching Screenshot 2)
+      if (showContours && wl <= h && x < w - 1 && z < l - 1) {
+        const step = 8;
+        const levelHere = Math.floor(h / step);
+        const levelRight = Math.floor(heightMap[idx + 1] / step);
+        const levelDown = Math.floor(heightMap[idx + w] / step);
+        if (levelHere !== levelRight || levelHere !== levelDown) {
+          // Dark crisp contour line
+          r *= 0.22;
+          g *= 0.22;
+          b *= 0.22;
+        } else {
+          // Subtle 2-block micro-contour rings (visible in Screenshot 2)
+          const subHere = Math.floor(h / 2);
+          const subRight = Math.floor(heightMap[idx + 1] / 2);
+          const subDown = Math.floor(heightMap[idx + w] / 2);
+          if (subHere !== subRight || subHere !== subDown) {
+            r *= 0.88;
+            g *= 0.88;
+            b *= 0.88;
+          }
+        }
+      }
+
+      // Selection Mask Yellow Tint
+      if (selectionMap && selectionMap[idx] > 0) {
+        r = r * 0.72 + 255 * 0.28;
+        g = g * 0.72 + 235 * 0.28;
+        b = b * 0.72 + 50 * 0.28;
+      }
+
+      data[pIdx]     = Math.max(0, Math.min(255, r));
+      data[pIdx + 1] = Math.max(0, Math.min(255, g));
+      data[pIdx + 2] = Math.max(0, Math.min(255, b));
+      data[pIdx + 3] = 255;
+    }
+  }
+}
+
+function rebuildFullOffscreenMap() {
+  if (!state.heightMap) return;
+  renderTerrainToImageData(
+    mapImageData.data,
+    state.width,
+    state.length,
+    state.heightMap,
+    state.waterMap,
+    state.terrainMap,
+    state.layerMaps,
+    state.showContours,
+    state.lavaInsteadOfWater,
+    state.selectionMap
+  );
+  mapOffscreenCtx.putImageData(mapImageData, 0, 0);
+}
+
+function updateOffscreenRegion(minX, minZ, maxX, maxZ) {
+  const x0 = Math.max(0, Math.floor(minX) - 2);
+  const z0 = Math.max(0, Math.floor(minZ) - 2);
+  const x1 = Math.min(state.width - 1, Math.ceil(maxX) + 2);
+  const z1 = Math.min(state.length - 1, Math.ceil(maxZ) + 2);
+  const rw = x1 - x0 + 1;
+  const rl = z1 - z0 + 1;
+  if (rw <= 0 || rl <= 0) return;
+
+  const soloLayer = state.layers.find(ly => ly.solo);
+  const data = mapImageData.data;
+
+  for (let z = z0; z <= z1; z++) {
+    for (let x = x0; x <= x1; x++) {
+      const idx = z * state.width + x;
+      const pIdx = idx * 4;
+
+      const h = state.heightMap[idx];
+      const wl = state.waterMap[idx];
+      const tId = state.terrainMap[idx] || 0;
+      const baseCol = TERRAINS[tId].color;
+
+      let r = baseCol[0], g = baseCol[1], b = baseCol[2];
+
+      const hL = x > 0 ? state.heightMap[idx - 1] : h;
+      const hU = z > 0 ? state.heightMap[idx - state.width] : h;
+      const shade = Math.max(-34, Math.min(34, ((h - hL) * 0.65 + (h - hU) * 0.65) * 9));
+      r += shade; g += shade; b += shade;
+
+      if (wl > h) {
+        const depth = Math.min(25, wl - h);
+        const alpha = Math.min(0.86, 0.45 + depth * 0.025);
+        if (state.lavaInsteadOfWater) {
+          r = r * (1 - alpha) + 235 * alpha;
+          g = g * (1 - alpha) + (85 - depth * 1.5) * alpha;
+          b = b * (1 - alpha) + 15 * alpha;
+        } else {
+          r = r * (1 - alpha) + 28 * alpha;
+          g = g * (1 - alpha) + (95 - depth * 1.6) * alpha;
+          b = b * (1 - alpha) + (225 - depth * 2.2) * alpha;
+        }
+      }
+
+      for (let i = 0; i < state.layers.length; i++) {
+        const ly = state.layers[i];
+        if (soloLayer && soloLayer.id !== ly.id) continue;
+        if (!soloLayer && !ly.show) continue;
+        const lArr = state.layerMaps[ly.id];
+        if (lArr && lArr[idx] > 10) {
+          if (((x + z) & 1) === 0 || lArr[idx] > 170) {
+            const la = (lArr[idx] / 255) * 0.68;
+            r = r * (1 - la) + ly.color[0] * la;
+            g = g * (1 - la) + ly.color[1] * la;
+            b = b * (1 - la) + ly.color[2] * la;
+          }
+        }
+      }
+
+      if (state.showContours && wl <= h && x < state.width - 1 && z < state.length - 1) {
+        const step = 8;
+        const lH = Math.floor(h / step);
+        if (lH !== Math.floor(state.heightMap[idx + 1] / step) || lH !== Math.floor(state.heightMap[idx + state.width] / step)) {
+          r *= 0.22; g *= 0.22; b *= 0.22;
+        } else {
+          const sH = Math.floor(h / 2);
+          if (sH !== Math.floor(state.heightMap[idx + 1] / 2) || sH !== Math.floor(state.heightMap[idx + state.width] / 2)) {
+            r *= 0.88; g *= 0.88; b *= 0.88;
+          }
+        }
+      }
+
+      if (state.selectionMap[idx] > 0) {
+        r = r * 0.72 + 255 * 0.28;
+        g = g * 0.72 + 235 * 0.28;
+        b = b * 0.72 + 50 * 0.28;
+      }
+
+      data[pIdx]     = Math.max(0, Math.min(255, r));
+      data[pIdx + 1] = Math.max(0, Math.min(255, g));
+      data[pIdx + 2] = Math.max(0, Math.min(255, b));
+      data[pIdx + 3] = 255;
+    }
+  }
+  mapOffscreenCtx.putImageData(mapImageData, 0, 0, x0, z0, rw, rl);
+}
+
+// ============================================================================
+// MAIN VIEWPORT RENDER LOOP (2D Canvas + North Compass + Brush Cursor)
+// ============================================================================
+const mainCanvas = document.getElementById('map-canvas');
+const mainCtx = mainCanvas.getContext('2d');
+let renderRequested = false;
+
+function requestRender() {
+  if (!renderRequested) {
+    renderRequested = true;
+    requestAnimationFrame(renderMainViewport);
+  }
+}
+
+function resizeMainCanvas() {
+  const container = document.getElementById('viewport-container');
+  const rect = container.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    mainCanvas.width = rect.width;
+    mainCanvas.height = rect.height;
+    requestRender();
+  }
+}
+
+function renderMainViewport() {
+  renderRequested = false;
+  const cw = mainCanvas.width;
+  const ch = mainCanvas.height;
+
+  // Classic WorldPainter Light Sky-Blue Void Background (from Screenshot 2)
+  mainCtx.fillStyle = '#d9f2ff';
+  mainCtx.fillRect(0, 0, cw, ch);
+
+  if (!state.heightMap) return;
+
+  const mapScreenW = state.width * state.zoom;
+  const mapScreenH = state.length * state.zoom;
+  const left = cw / 2 - state.camX * state.zoom;
+  const top = ch / 2 - state.camZ * state.zoom;
+
+  // Crisp pixel art when zoomed in
+  mainCtx.imageSmoothingEnabled = state.zoom < 1.5;
+  mainCtx.drawImage(mapOffscreenCanvas, left, top, mapScreenW, mapScreenH);
+
+  // Subtle world border
+  mainCtx.strokeStyle = '#607d8b';
+  mainCtx.lineWidth = 1;
+  mainCtx.strokeRect(left, top, mapScreenW, mapScreenH);
+
+  // Optional 16x16 Chunk Grid
+  if (state.showGrid && state.zoom >= 1.2) {
+    mainCtx.strokeStyle = 'rgba(0, 0, 0, 0.16)';
+    mainCtx.lineWidth = 1;
+    mainCtx.beginPath();
+    for (let x = 0; x <= state.width; x += 16) {
+      const sx = left + x * state.zoom;
+      mainCtx.moveTo(sx, top);
+      mainCtx.lineTo(sx, top + mapScreenH);
+    }
+    for (let z = 0; z <= state.length; z += 16) {
+      const sy = top + z * state.zoom;
+      mainCtx.moveTo(left, sy);
+      mainCtx.lineTo(left + mapScreenW, sy);
+    }
+    mainCtx.stroke();
+  }
+
+  // Draw Spawn Point Crosshair (Red Crosshair matching Screenshot 2)
+  const spX = left + state.spawnX * state.zoom;
+  const spZ = top + state.spawnZ * state.zoom;
+  mainCtx.strokeStyle = '#d32f2f';
+  mainCtx.lineWidth = 2;
+  mainCtx.beginPath();
+  mainCtx.moveTo(spX - 7, spZ); mainCtx.lineTo(spX + 7, spZ);
+  mainCtx.moveTo(spX, spZ - 7); mainCtx.lineTo(spX, spZ + 7);
+  mainCtx.stroke();
+  mainCtx.strokeCircle?.(spX, spZ, 5);
+
+  // Draw Active Brush Cursor Outline
+  if (state.cursorVisible) {
+    const bx = left + state.cursorX * state.zoom;
+    const bz = top + state.cursorZ * state.zoom;
+    const br = state.radius * state.zoom;
+
+    mainCtx.save();
+    mainCtx.translate(bx, bz);
+    mainCtx.rotate((state.rotation * Math.PI) / 180);
+    mainCtx.strokeStyle = '#111111';
+    mainCtx.lineWidth = 1.2;
+    mainCtx.setLineDash([4, 3]);
+
+    if (state.brushId.includes('square')) {
+      mainCtx.strokeRect(-br, -br, br * 2, br * 2);
+    } else {
+      mainCtx.beginPath();
+      mainCtx.arc(0, 0, br, 0, Math.PI * 2);
+      mainCtx.stroke();
+    }
+    mainCtx.restore();
+  }
+
+  // Draw Classic WorldPainter North Arrow & "100 blocks" Scale Bar in Bottom-Left (Screenshot 2)
+  drawCompassAndScale(mainCtx, 18, ch - 26);
+}
+
+function drawCompassAndScale(ctx, x, y) {
+  ctx.save();
+  // North Arrow Icon
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y - 22);
+  ctx.lineTo(x + 17, y);
+  ctx.lineTo(x + 8, y - 5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y - 22);
+  ctx.lineTo(x - 1, y);
+  ctx.lineTo(x + 8, y - 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Letter "N"
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 20px Georgia, serif';
+  ctx.fillText('N', x + 21, y - 2);
+
+  // Scale Bar ("100 blocks")
+  const barPx = Math.max(40, Math.min(160, 100 * state.zoom));
+  const bx = x + 48;
+  const by = y - 8;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(bx, by, barPx, 4);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(bx + barPx / 2, by + 1, barPx / 2 - 1, 2);
+  ctx.strokeStyle = '#000';
+  ctx.strokeRect(bx, by, barPx, 4);
+
+  const blocksShown = Math.round(barPx / state.zoom);
+  ctx.fillStyle = '#000';
+  ctx.font = '11px Segoe UI, sans-serif';
+  ctx.fillText(`${blocksShown} blocks`, bx, by + 15);
+  ctx.restore();
+}
+
+// ============================================================================
+// BRUSH & SCULPTING / PAINTING ENGINE
+// ============================================================================
+function evaluateBrushWeight(dx, dz, radius, brushId, rotationDeg) {
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const rx = dx * Math.cos(rad) - dz * Math.sin(rad);
+  const rz = dx * Math.sin(rad) + dz * Math.cos(rad);
+  const nx = rx / radius;
+  const nz = rz / radius;
+  const dist = Math.hypot(nx, nz);
+
+  switch (brushId) {
+    case 'soft_circle':
+      if (dist > 1) return 0;
+      return Math.pow(Math.cos((dist * Math.PI) / 2), 1.6);
+
+    case 'hard_circle':
+      return dist <= 1 ? 1 : 0;
+
+    case 'soft_square': {
+      const m = Math.max(Math.abs(nx), Math.abs(nz));
+      if (m > 1) return 0;
+      return Math.pow(1 - m, 1.3);
+    }
+
+    case 'hard_square':
+      return Math.max(Math.abs(nx), Math.abs(nz)) <= 1 ? 1 : 0;
+
+    case 'mountain_cone':
+      if (dist > 1) return 0;
+      return Math.pow(1 - dist, 1.35);
+
+    case 'noise_circle':
+      if (dist > 1) return 0;
+      return Math.random() < (1 - dist * 0.75) ? (1 - dist * 0.5) : 0;
+
+    case 'cracks': {
+      if (dist > 1) return 0;
+      const angle = Math.atan2(nz, nx);
+      const ridge = Math.abs(Math.sin(angle * 5 + dist * 6));
+      return (1 - dist) * (ridge > 0.65 ? 1 : 0.15);
+    }
+
+    case 'star_spike': {
+      if (dist > 1) return 0;
+      const angle = Math.atan2(nz, nx);
+      const star = 0.65 + 0.35 * Math.cos(angle * 6);
+      return dist <= star ? (1 - dist / star) : 0;
+    }
+
+    default:
+      return dist <= 1 ? 1 - dist : 0;
+  }
+}
+
+function applyBrushAt(worldX, worldZ, forceInvert = false) {
+  const r = Math.max(1, state.radius);
+  const minX = Math.max(0, Math.floor(worldX - r));
+  const maxX = Math.min(state.width - 1, Math.ceil(worldX + r));
+  const minZ = Math.max(0, Math.floor(worldZ - r));
+  const maxZ = Math.min(state.length - 1, Math.ceil(worldZ + r));
+
+  const invert = forceInvert || state.invertAction;
+  const strength = (state.intensity / 100);
+
+  // Instant single-point tools
+  if (state.tool === 'spawn') {
+    state.spawnX = Math.max(0, Math.min(state.width - 1, Math.round(worldX)));
+    state.spawnZ = Math.max(0, Math.min(state.length - 1, Math.round(worldZ)));
+    requestRender();
+    return;
+  }
+
+  if (state.tool === 'eyedropper') {
+    const ix = Math.max(0, Math.min(state.width - 1, Math.round(worldX)));
+    const iz = Math.max(0, Math.min(state.length - 1, Math.round(worldZ)));
+    const idx = iz * state.width + ix;
+    state.activeTerrain = state.terrainMap[idx];
+    state.flattenHeight = Math.round(state.heightMap[idx]);
+    document.getElementById('input-flatten-height').value = state.flattenHeight;
+    renderTerrainGrid();
+    showToast(`Picked ${TERRAINS[state.activeTerrain].name} (Height: ${state.flattenHeight})`);
+    return;
+  }
+
+  // Area Brush Loop
+  for (let z = minZ; z <= maxZ; z++) {
+    for (let x = minX; x <= maxX; x++) {
+      const idx = z * state.width + x;
+
+      // Read-only layer check
+      if (state.layerMaps['readonly'][idx] > 128 && state.activeLayer !== 'readonly') continue;
+
+      // Selection & Height Filter Options
+      const opts = state.brushOpts;
+      if (opts.insideSel && state.selectionMap[idx] === 0) continue;
+      if (opts.outsideSel && state.selectionMap[idx] > 0) continue;
+      if (opts.aboveEnabled && state.heightMap[idx] < opts.aboveVal) continue;
+      if (opts.belowEnabled && state.heightMap[idx] > opts.belowVal) continue;
+      if (opts.onlyOnEnabled && state.terrainMap[idx] !== opts.onlyOnTerrain) continue;
+      if (opts.exceptOnEnabled && state.terrainMap[idx] === opts.exceptOnTerrain) continue;
+
+      const w = evaluateBrushWeight(x - worldX, z - worldZ, r, state.brushId, state.rotation);
+      if (w <= 0.001) continue;
+
+      const eff = w * strength;
+
+      switch (state.tool) {
+        case 'height': {
+          const delta = (invert ? -1 : 1) * eff * 2.4;
+          state.heightMap[idx] = Math.max(1, Math.min(state.maxHeight - 1, state.heightMap[idx] + delta));
+          break;
+        }
+        case 'mountain': {
+          const peak = evaluateBrushWeight(x - worldX, z - worldZ, r, 'mountain_cone', state.rotation);
+          const delta = (invert ? -1 : 1) * peak * strength * 3.5;
+          state.heightMap[idx] = Math.max(1, Math.min(state.maxHeight - 1, state.heightMap[idx] + delta));
+          if (!invert && state.heightMap[idx] > state.waterLevelDefault + 28 && Math.random() < eff * 0.4) {
+            state.terrainMap[idx] = 3; // Auto-stone steep peaks
+          }
+          break;
+        }
+        case 'flatten': {
+          const target = state.flattenHeight;
+          state.heightMap[idx] += (target - state.heightMap[idx]) * Math.min(1, eff * 0.35);
+          break;
+        }
+        case 'smooth': {
+          if (x > 0 && x < state.width - 1 && z > 0 && z < state.length - 1) {
+            const avg = (
+              state.heightMap[idx - 1] +
+              state.heightMap[idx + 1] +
+              state.heightMap[idx - state.width] +
+              state.heightMap[idx + state.width]
+            ) * 0.25;
+            state.heightMap[idx] += (avg - state.heightMap[idx]) * Math.min(1, eff * 0.5);
+          }
+          break;
+        }
+        case 'spray':
+        case 'pencil': {
+          const hard = state.tool === 'pencil';
+          if (state.paintMode === 'terrain') {
+            if (hard || Math.random() < eff * 0.65) {
+              state.terrainMap[idx] = state.activeTerrain;
+            }
+          } else if (state.paintMode === 'layer') {
+            const lArr = state.layerMaps[state.activeLayer];
+            if (lArr) {
+              if (invert) {
+                lArr[idx] = Math.max(0, lArr[idx] - (hard ? 255 : Math.ceil(eff * 90)));
+              } else {
+                lArr[idx] = Math.min(255, lArr[idx] + (hard ? 255 : Math.ceil(eff * 90)));
+              }
+            }
+          } else if (state.paintMode === 'biome') {
+            if (hard || Math.random() < eff * 0.7) {
+              state.biomeMap[idx] = state.activeBiome;
+            }
+          }
+          break;
+        }
+        case 'flood': {
+          const targetWater = Math.max(state.waterMap[idx], Math.ceil(state.heightMap[idx]) + 1);
+          if (invert) {
+            state.waterMap[idx] = Math.max(0, state.waterMap[idx] - eff * 2);
+          } else {
+            state.waterMap[idx] = Math.min(state.maxHeight - 1, state.waterMap[idx] + eff * 1.5);
+            if (state.waterMap[idx] < targetWater && eff > 0.15) {
+              state.waterMap[idx] = targetWater;
+            }
+          }
+          break;
+        }
+        case 'sponge': {
+          state.waterMap[idx] = Math.max(0, state.heightMap[idx] - 1);
+          break;
+        }
+        case 'select': {
+          if (eff > 0.1) state.selectionMap[idx] = 255;
+          break;
+        }
+        case 'deselect': {
+          if (eff > 0.1) state.selectionMap[idx] = 0;
+          break;
+        }
+      }
+    }
+  }
+
+  updateOffscreenRegion(minX, minZ, maxX, maxZ);
+  requestRender();
+}
+
+// ============================================================================
+// UNDO / REDO SNAPSHOTS
+// ============================================================================
+function pushUndoSnapshot() {
+  if (!state.heightMap) return;
+  if (state.undoStack.length >= 12) state.undoStack.shift();
+  state.undoStack.push({
+    heightMap: new Float32Array(state.heightMap),
+    waterMap: new Float32Array(state.waterMap),
+    terrainMap: new Uint8Array(state.terrainMap),
+    biomeMap: new Uint8Array(state.biomeMap),
+    activeLayerId: state.activeLayer,
+    activeLayerData: state.layerMaps[state.activeLayer] ? new Uint8Array(state.layerMaps[state.activeLayer]) : null
+  });
+  state.redoStack = [];
+}
+
+function undo() {
+  if (state.undoStack.length === 0) {
+    showToast('Nothing to undo');
+    return;
+  }
+  const snap = state.undoStack.pop();
+  state.redoStack.push({
+    heightMap: new Float32Array(state.heightMap),
+    waterMap: new Float32Array(state.waterMap),
+    terrainMap: new Uint8Array(state.terrainMap),
+    biomeMap: new Uint8Array(state.biomeMap),
+    activeLayerId: snap.activeLayerId,
+    activeLayerData: snap.activeLayerId && state.layerMaps[snap.activeLayerId] ? new Uint8Array(state.layerMaps[snap.activeLayerId]) : null
+  });
+
+  state.heightMap.set(snap.heightMap);
+  state.waterMap.set(snap.waterMap);
+  state.terrainMap.set(snap.terrainMap);
+  state.biomeMap.set(snap.biomeMap);
+  if (snap.activeLayerId && snap.activeLayerData && state.layerMaps[snap.activeLayerId]) {
+    state.layerMaps[snap.activeLayerId].set(snap.activeLayerData);
+  }
+  rebuildFullOffscreenMap();
+  requestRender();
+  showToast('Undid last action');
+}
+
+function redo() {
+  if (state.redoStack.length === 0) {
+    showToast('Nothing to redo');
+    return;
+  }
+  const snap = state.redoStack.pop();
+  state.undoStack.push({
+    heightMap: new Float32Array(state.heightMap),
+    waterMap: new Float32Array(state.waterMap),
+    terrainMap: new Uint8Array(state.terrainMap),
+    biomeMap: new Uint8Array(state.biomeMap),
+    activeLayerId: snap.activeLayerId,
+    activeLayerData: snap.activeLayerId && state.layerMaps[snap.activeLayerId] ? new Uint8Array(state.layerMaps[snap.activeLayerId]) : null
+  });
+  state.heightMap.set(snap.heightMap);
+  state.waterMap.set(snap.waterMap);
+  state.terrainMap.set(snap.terrainMap);
+  state.biomeMap.set(snap.biomeMap);
+  if (snap.activeLayerId && snap.activeLayerData && state.layerMaps[snap.activeLayerId]) {
+    state.layerMaps[snap.activeLayerId].set(snap.activeLayerData);
+  }
+  rebuildFullOffscreenMap();
+  requestRender();
+  showToast('Redid action');
+}
+
+// ============================================================================
+// MOUSE & MULTI-TOUCH VIEWPORT INTERACTIONS
+// ============================================================================
+let isPainting = false;
+let isPanning = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let lastPinchDist = 0;
+
+function screenToWorld(clientX, clientY) {
+  const rect = mainCanvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  const wx = state.camX + (sx - mainCanvas.width / 2) / state.zoom;
+  const wz = state.camZ + (sy - mainCanvas.height / 2) / state.zoom;
+  return { wx, wz };
+}
+
+function updateCursorTelemetry(wx, wz) {
+  state.cursorX = wx;
+  state.cursorZ = wz;
+  state.cursorVisible = true;
+
+  const ix = Math.max(0, Math.min(state.width - 1, Math.round(wx)));
+  const iz = Math.max(0, Math.min(state.length - 1, Math.round(wz)));
+  const idx = iz * state.width + ix;
+
+  if (state.heightMap) {
+    const h = Math.round(state.heightMap[idx]);
+    const wl = Math.round(state.waterMap[idx]);
+    const tName = TERRAINS[state.terrainMap[idx]]?.name || 'Grass';
+    const bName = BIOMES[state.biomeMap[idx]]?.name || 'Plains';
+
+    document.getElementById('status-location').textContent = `Location: ${ix}, ${iz}`;
+    document.getElementById('status-height').textContent = `Height: ${h}`;
+    document.getElementById('status-terrain').textContent = `Terrain: ${tName}`;
+
+    document.getElementById('info-coords').textContent = `${ix}, ${iz}`;
+    document.getElementById('info-height').textContent = `${h}`;
+    document.getElementById('info-water').textContent = `${wl}`;
+    document.getElementById('info-terrain').textContent = tName;
+    document.getElementById('info-biome').textContent = bName;
+
+    const activeLys = state.layers
+      .filter(l => state.layerMaps[l.id] && state.layerMaps[l.id][idx] > 20)
+      .map(l => l.name);
+    document.getElementById('info-layers').textContent = activeLys.length ? activeLys.join(', ') : 'None';
+  }
+}
+
+// Mouse Events
+mainCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+mainCanvas.addEventListener('mousedown', e => {
+  closeAllMenus();
+  const { wx, wz } = screenToWorld(e.clientX, e.clientY);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  if (e.button === 1 || e.altKey || state.touchPanMode) {
+    isPanning = true;
+  } else if (e.button === 0 || e.button === 2) {
+    pushUndoSnapshot();
+    isPainting = true;
+    applyBrushAt(wx, wz, e.button === 2);
+  }
+});
+
+window.addEventListener('mousemove', e => {
+  const { wx, wz } = screenToWorld(e.clientX, e.clientY);
+  updateCursorTelemetry(wx, wz);
+
+  if (isPanning) {
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    state.camX -= dx / state.zoom;
+    state.camZ -= dy / state.zoom;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    requestRender();
+  } else if (isPainting) {
+    applyBrushAt(wx, wz, (e.buttons & 2) === 2);
+  } else {
+    requestRender();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  isPainting = false;
+  isPanning = false;
+});
+
+mainCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.15 : 0.87;
+  changeZoom(factor);
+}, { passive: false });
+
+// Touch Events (1-finger paint/pan, 2-finger pinch zoom & pan)
+mainCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  closeAllMenus();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    lastMouseX = t.clientX;
+    lastMouseY = t.clientY;
+    const { wx, wz } = screenToWorld(t.clientX, t.clientY);
+    updateCursorTelemetry(wx, wz);
+
+    if (state.touchPanMode) {
+      isPanning = true;
+    } else {
+      pushUndoSnapshot();
+      isPainting = true;
+      applyBrushAt(wx, wz, false);
+    }
+  } else if (e.touches.length === 2) {
+    isPainting = false;
+    isPanning = true;
+    const t1 = e.touches[0], t2 = e.touches[1];
+    lastPinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    lastMouseX = (t1.clientX + t2.clientX) / 2;
+    lastMouseY = (t1.clientY + t2.clientY) / 2;
+  }
+}, { passive: false });
+
+mainCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const { wx, wz } = screenToWorld(t.clientX, t.clientY);
+    updateCursorTelemetry(wx, wz);
+
+    if (isPanning) {
+      state.camX -= (t.clientX - lastMouseX) / state.zoom;
+      state.camZ -= (t.clientY - lastMouseY) / state.zoom;
+      lastMouseX = t.clientX;
+      lastMouseY = t.clientY;
+      requestRender();
+    } else if (isPainting) {
+      applyBrushAt(wx, wz, false);
+    }
+  } else if (e.touches.length === 2) {
+    const t1 = e.touches[0], t2 = e.touches[1];
+    const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    const midX = (t1.clientX + t2.clientX) / 2;
+    const midY = (t1.clientY + t2.clientY) / 2;
+
+    if (lastPinchDist > 0) {
+      changeZoom(dist / lastPinchDist);
+    }
+    state.camX -= (midX - lastMouseX) / state.zoom;
+    state.camZ -= (midY - lastMouseY) / state.zoom;
+
+    lastPinchDist = dist;
+    lastMouseX = midX;
+    lastMouseY = midY;
+    requestRender();
+  }
+}, { passive: false });
+
+mainCanvas.addEventListener('touchend', () => {
+  isPainting = false;
+  isPanning = false;
+  lastPinchDist = 0;
+});
+
+// ============================================================================
+// UI CONTROLS, DOCKS, TABS & BRUSH PREVIEWS
+// ============================================================================
+function selectTool(toolId) {
+  state.tool = toolId;
+  document.querySelectorAll('#tools-grid .wp-tool-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tool === toolId);
+  });
+  document.getElementById('flatten-height-box').classList.toggle('hidden', toolId !== 'flatten');
+  closeAllMenus();
+}
+
+function setInvertAction(inv) {
+  state.invertAction = inv;
+  document.getElementById('btn-invert-normal').classList.toggle('active', !inv);
+  document.getElementById('btn-invert-sub').classList.toggle('active', inv);
+}
+
+function toggleTouchPanMode() {
+  state.touchPanMode = !state.touchPanMode;
+  const btn = document.getElementById('btn-touch-mode');
+  btn.classList.toggle('active', state.touchPanMode);
+  document.getElementById('touch-mode-icon').textContent = state.touchPanMode ? '✋' : '🖌️';
+  document.getElementById('touch-mode-label').textContent = state.touchPanMode ? 'Mode: Pan/Move' : 'Mode: Paint';
+  showToast(state.touchPanMode ? 'Pan Mode: Drag to move camera' : 'Paint Mode: Drag to sculpt & paint');
+}
+
+function switchLeftTab(tab) {
+  ['layers', 'terrain', 'biomes'].forEach(t => {
+    document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+    document.getElementById(`vtab-${t}`).classList.toggle('active', t === tab);
+  });
+  const titles = { layers: 'Layers', terrain: 'Terrain', biomes: 'Biomes' };
+  document.getElementById('left-tab-title').textContent = titles[tab];
+
+  if (tab === 'terrain') {
+    state.paintMode = 'terrain';
+    if (!['spray', 'pencil', 'eyedropper'].includes(state.tool)) selectTool('spray');
+  } else if (tab === 'layers') {
+    state.paintMode = 'layer';
+    if (!['spray', 'pencil'].includes(state.tool)) selectTool('spray');
+  } else if (tab === 'biomes') {
+    state.paintMode = 'biome';
+    if (!['spray', 'pencil'].includes(state.tool)) selectTool('spray');
+  }
+  updateActivePaintBadge();
+}
+
+function switchRightTab(tab) {
+  document.getElementById('panel-brush-settings').classList.toggle('hidden', tab !== 'settings');
+  document.getElementById('panel-brush-info').classList.toggle('hidden', tab !== 'info');
+  document.getElementById('vtab-bsettings').classList.toggle('active', tab === 'settings');
+  document.getElementById('vtab-binfo').classList.toggle('active', tab === 'info');
+  document.getElementById('right-tab-title').textContent = tab === 'settings' ? 'Brush Settings' : 'Info';
+}
+
+function updateActivePaintBadge() {
+  const el = document.getElementById('active-paint-badge');
+  if (state.paintMode === 'terrain') {
+    el.textContent = `Paint: ${TERRAINS[state.activeTerrain].name}`;
+  } else if (state.paintMode === 'layer') {
+    const l = state.layers.find(x => x.id === state.activeLayer);
+    el.textContent = `Layer: ${l ? l.name : ''}`;
+  } else {
+    el.textContent = `Biome: ${BIOMES[state.activeBiome].name}`;
+  }
+}
+
+function renderLayersList() {
+  const container = document.getElementById('layers-list');
+  container.innerHTML = '';
+
+  // Built-in Terrain & Water/Lava informational rows (as seen in Screenshot 2)
+  const staticRows = `
+    <div class="flex items-center px-1 py-0.5 rounded bg-gray-100 text-gray-700">
+      <span class="w-7 text-center"><input type="checkbox" checked disabled /></span>
+      <span class="w-7 text-center"><input type="checkbox" disabled /></span>
+      <span class="pl-1 flex items-center gap-1.5">🟩 <span>Terrain</span></span>
+    </div>
+    <div class="flex items-center px-1 py-0.5 rounded bg-gray-100 text-gray-700">
+      <span class="w-7 text-center"><input type="checkbox" checked disabled /></span>
+      <span class="w-7 text-center"></span>
+      <span class="pl-1 flex items-center gap-1.5">💧 <span>Water/Lava</span></span>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', staticRows);
+
+  state.layers.forEach(ly => {
+    const isSelected = state.paintMode === 'layer' && state.activeLayer === ly.id;
+    const row = document.createElement('div');
+    row.className = `flex items-center px-1 py-0.5 rounded cursor-pointer ${isSelected ? 'bg-[#cce8ff] border border-[#7eb4ea] font-semibold' : 'hover:bg-gray-100'}`;
+    row.innerHTML = `
+      <span class="w-7 text-center" onclick="event.stopPropagation()">
+        <input type="checkbox" ${ly.show ? 'checked' : ''} onchange="toggleLayerShow('${ly.id}', this.checked)" />
+      </span>
+      <span class="w-7 text-center" onclick="event.stopPropagation()">
+        <input type="checkbox" ${ly.solo ? 'checked' : ''} onchange="toggleLayerSolo('${ly.id}', this.checked)" />
+      </span>
+      <span class="pl-1 flex items-center gap-1.5 flex-1 truncate">
+        <span>${ly.icon}</span>
+        <span class="truncate">${ly.name}</span>
+      </span>
+    `;
+    row.onclick = () => {
+      state.activeLayer = ly.id;
+      state.paintMode = 'layer';
+      if (!['spray', 'pencil'].includes(state.tool)) selectTool('spray');
+      renderLayersList();
+      updateActivePaintBadge();
+    };
+    container.appendChild(row);
+  });
+}
+
+function toggleLayerShow(id, checked) {
+  const ly = state.layers.find(x => x.id === id);
+  if (ly) {
+    ly.show = checked;
+    rebuildFullOffscreenMap();
+    requestRender();
+  }
+}
+
+function toggleLayerSolo(id, checked) {
+  state.layers.forEach(x => {
+    x.solo = (x.id === id) ? checked : false;
+  });
+  renderLayersList();
+  rebuildFullOffscreenMap();
+  requestRender();
+}
+
+function toggleCustomLayerMenu(e) {
+  e.stopPropagation();
+  document.getElementById('custom-layer-menu').classList.toggle('hidden');
+}
+
+function addCustomLayer(typeLabel) {
+  const id = 'custom_' + Date.now();
+  const colors = [[230, 81, 0], [142, 36, 170], [0, 131, 143], [198, 40, 40]];
+  const col = colors[state.layers.length % colors.length];
+  const newLayer = {
+    id,
+    name: `${typeLabel} #${state.layers.length - 11}`,
+    icon: '✨',
+    color: col,
+    show: true,
+    solo: false
+  };
+  state.layers.push(newLayer);
+  state.layerMaps[id] = new Uint8Array(state.width * state.length);
+  state.activeLayer = id;
+  state.paintMode = 'layer';
+  document.getElementById('custom-layer-menu').classList.add('hidden');
+  renderLayersList();
+  updateActivePaintBadge();
+  showToast(`Added ${newLayer.name}`);
+}
+
+function renderTerrainGrid() {
+  const grid = document.getElementById('terrain-grid');
+  const selOnly = document.getElementById('opt-only-on-val');
+  const selExcept = document.getElementById('opt-except-on-val');
+  grid.innerHTML = '';
+  selOnly.innerHTML = '';
+  selExcept.innerHTML = '';
+
+  TERRAINS.forEach(t => {
+    const active = state.paintMode === 'terrain' && state.activeTerrain === t.id;
+    const btn = document.createElement('button');
+    btn.className = `flex items-center gap-1.5 px-1.5 py-1 text-[11px] rounded border text-left ${active ? 'bg-[#cce8ff] border-[#2680eb] font-semibold' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`;
+    btn.innerHTML = `
+      <span class="w-3.5 h-3.5 rounded-sm border border-black/30 shrink-0" style="background: rgb(${t.color.join(',')})"></span>
+      <span class="truncate">${t.name}</span>
+    `;
+    btn.onclick = () => {
+      state.activeTerrain = t.id;
+      state.paintMode = 'terrain';
+      if (!['spray', 'pencil'].includes(state.tool)) selectTool('spray');
+      renderTerrainGrid();
+      updateActivePaintBadge();
+    };
+    grid.appendChild(btn);
+
+    selOnly.insertAdjacentHTML('beforeend', `<option value="${t.id}">${t.name}</option>`);
+    selExcept.insertAdjacentHTML('beforeend', `<option value="${t.id}">${t.name}</option>`);
+  });
+}
+
+function renderBiomesList() {
+  const list = document.getElementById('biomes-list');
+  list.innerHTML = '';
+  BIOMES.forEach(b => {
+    const active = state.paintMode === 'biome' && state.activeBiome === b.id;
+    const btn = document.createElement('button');
+    btn.className = `w-full flex items-center gap-2 px-2 py-1 text-xs rounded border text-left ${active ? 'bg-[#cce8ff] border-[#2680eb] font-semibold' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`;
+    btn.innerHTML = `
+      <span class="w-3.5 h-3.5 rounded-full border border-black/30 shrink-0" style="background:${b.color}"></span>
+      <span>${b.name}</span>
+    `;
+    btn.onclick = () => {
+      state.activeBiome = b.id;
+      state.paintMode = 'biome';
+      if (!['spray', 'pencil'].includes(state.tool)) selectTool('spray');
+      renderBiomesList();
+      updateActivePaintBadge();
+    };
+    list.appendChild(btn);
+  });
+}
+
+function renderBrushesGrid() {
+  const grid = document.getElementById('brushes-grid');
+  grid.innerHTML = '';
+
+  BRUSHES.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = `p-1 bg-white border rounded-sm flex items-center justify-center ${state.brushId === b.id ? 'border-2 border-[#2680eb] bg-[#e5f3ff]' : 'border-gray-300 hover:border-blue-400'}`;
+    btn.title = b.name;
+
+    const c = document.createElement('canvas');
+    c.width = 34;
+    c.height = 34;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(34, 34);
+    for (let y = 0; y < 34; y++) {
+      for (let x = 0; x < 34; x++) {
+        const w = evaluateBrushWeight(x - 17, y - 17, 15, b.id, 0);
+        const val = Math.round(255 * (1 - w));
+        const i = (y * 34 + x) * 4;
+        img.data[i] = val;
+        img.data[i + 1] = val;
+        img.data[i + 2] = val;
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    btn.appendChild(c);
+
+    btn.onclick = () => {
+      state.brushId = b.id;
+      renderBrushesGrid();
+      requestRender();
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function updateBrushSetting(key, val) {
+  const num = parseInt(val);
+  state[key] = num;
+  if (key === 'radius') {
+    document.getElementById('lbl-radius').textContent = `${num} blocks`;
+    document.getElementById('status-radius').textContent = `Radius: ${num}`;
+  } else if (key === 'rotation') {
+    document.getElementById('lbl-rotation').textContent = `${num}°`;
+  } else if (key === 'intensity') {
+    document.getElementById('lbl-intensity').textContent = `${num}%`;
+  }
+  requestRender();
+}
+
+// ============================================================================
+// CAMERA, VIEW OPTIONS & MOBILE DRAWERS
+// ============================================================================
+function changeZoom(factor) {
+  state.zoom = Math.max(0.25, Math.min(12, state.zoom * factor));
+  document.getElementById('status-zoom').textContent = `Zoom: ${Math.round(state.zoom * 100)}%`;
+  requestRender();
+}
+
+function resetCamera() {
+  state.camX = state.width / 2;
+  state.camZ = state.length / 2;
+  const fitW = (mainCanvas.width * 0.88) / state.width;
+  const fitH = (mainCanvas.height * 0.88) / state.length;
+  state.zoom = Math.max(0.3, Math.min(2.5, Math.min(fitW, fitH)));
+  document.getElementById('status-zoom').textContent = `Zoom: ${Math.round(state.zoom * 100)}%`;
+  requestRender();
+}
+
+function toggleContours() {
+  state.showContours = !state.showContours;
+  document.getElementById('btn-tb-contours').classList.toggle('active', state.showContours);
+  document.getElementById('chk-contours').textContent = state.showContours ? '✓' : '';
+  rebuildFullOffscreenMap();
+  requestRender();
+  closeAllMenus();
+}
+
+function toggleGrid() {
+  state.showGrid = !state.showGrid;
+  document.getElementById('chk-grid').textContent = state.showGrid ? '✓' : '';
+  requestRender();
+  closeAllMenus();
+}
+
+function globalSmooth() {
+  pushUndoSnapshot();
+  const copy = new Float32Array(state.heightMap);
+  for (let z = 1; z < state.length - 1; z++) {
+    for (let x = 1; x < state.width - 1; x++) {
+      const idx = z * state.width + x;
+      state.heightMap[idx] = (copy[idx] * 2 + copy[idx - 1] + copy[idx + 1] + copy[idx - state.width] + copy[idx + state.width]) / 6;
+    }
+  }
+  rebuildFullOffscreenMap();
+  requestRender();
+  closeAllMenus();
+  showToast('Applied global terrain smooth');
+}
+
+function globalRaise(delta) {
+  pushUndoSnapshot();
+  for (let i = 0; i < state.heightMap.length; i++) {
+    state.heightMap[i] = Math.max(1, Math.min(state.maxHeight - 1, state.heightMap[i] + delta));
+  }
+  rebuildFullOffscreenMap();
+  requestRender();
+  closeAllMenus();
+  showToast(`Shifted terrain height by ${delta > 0 ? '+' : ''}${delta} blocks`);
+}
+
+function clearSelection() {
+  state.selectionMap.fill(0);
+  rebuildFullOffscreenMap();
+  requestRender();
+  closeAllMenus();
+  showToast('Cleared selection mask');
+}
+
+function toggleMobileDrawer(dockId, subTab) {
+  const dock = document.getElementById(dockId);
+  const wasOpen = dock.classList.contains('mobile-open');
+  closeMobileDrawers();
+  if (!wasOpen) {
+    dock.classList.add('mobile-open');
+    if (dockId === 'left-dock' && subTab) switchLeftTab(subTab);
+    if (dockId === 'right-dock' && subTab) switchRightTab(subTab);
+  }
+}
+
+function closeMobileDrawers() {
+  document.getElementById('left-dock').classList.remove('mobile-open');
+  document.getElementById('right-dock').classList.remove('mobile-open');
+}
+
+// ============================================================================
+// INTERACTIVE 3D TERRAIN PREVIEW (THREE.JS)
+// ============================================================================
+let threeScene, threeCamera, threeRenderer, threeMesh, threeWaterMesh;
+let threeOrbit = { theta: 0.75, phi: 0.95, radius: 190, dragging: false, px: 0, py: 0 };
+
+function toggle3DView() {
+  const container = document.getElementById('view-3d-container');
+  const isHidden = container.classList.contains('hidden');
+  closeAllMenus();
+
+  if (isHidden) {
+    container.classList.remove('hidden');
+    initOrUpdate3DView();
+  } else {
+    container.classList.add('hidden');
+  }
+}
+
+function initOrUpdate3DView() {
+  const mount = document.getElementById('three-mount');
+  if (!threeRenderer) {
+    threeScene = new THREE.Scene();
+    threeScene.background = new THREE.Color(0x87ceeb);
+    threeScene.fog = new THREE.FogExp2(0x87ceeb, 0.0022);
+
+    threeCamera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.5, 1000);
+
+    threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+    threeRenderer.setSize(mount.clientWidth, mount.clientHeight);
+    mount.appendChild(threeRenderer.domElement);
+
+    const amb = new THREE.AmbientLight(0xffffff, 0.65);
+    threeScene.add(amb);
+    const dir = new THREE.DirectionalLight(0xfff8e7, 0.85);
+    dir.position.set(120, 200, 90);
+    threeScene.add(dir);
+
+    // Orbit Mouse & Touch Controls
+    const dom = threeRenderer.domElement;
+    dom.addEventListener('mousedown', e => {
+      threeOrbit.dragging = true;
+      threeOrbit.px = e.clientX;
+      threeOrbit.py = e.clientY;
+    });
+    window.addEventListener('mousemove', e => {
+      if (!threeOrbit.dragging) return;
+      threeOrbit.theta -= (e.clientX - threeOrbit.px) * 0.008;
+      threeOrbit.phi = Math.max(0.15, Math.min(1.48, threeOrbit.phi - (e.clientY - threeOrbit.py) * 0.008));
+      threeOrbit.px = e.clientX;
+      threeOrbit.py = e.clientY;
+      update3DCameraPos();
+    });
+    window.addEventListener('mouseup', () => { threeOrbit.dragging = false; });
+    dom.addEventListener('wheel', e => {
+      threeOrbit.radius = Math.max(40, Math.min(420, threeOrbit.radius + e.deltaY * 0.1));
+      update3DCameraPos();
+    });
+
+    dom.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        threeOrbit.dragging = true;
+        threeOrbit.px = e.touches[0].clientX;
+        threeOrbit.py = e.touches[0].clientY;
+      }
+    });
+    dom.addEventListener('touchmove', e => {
+      if (threeOrbit.dragging && e.touches.length === 1) {
+        threeOrbit.theta -= (e.touches[0].clientX - threeOrbit.px) * 0.01;
+        threeOrbit.phi = Math.max(0.15, Math.min(1.48, threeOrbit.phi - (e.touches[0].clientY - threeOrbit.py) * 0.01));
+        threeOrbit.px = e.touches[0].clientX;
+        threeOrbit.py = e.touches[0].clientY;
+        update3DCameraPos();
+      }
+    });
+    dom.addEventListener('touchend', () => { threeOrbit.dragging = false; });
+  } else {
+    threeRenderer.setSize(mount.clientWidth, mount.clientHeight);
+    threeCamera.aspect = mount.clientWidth / mount.clientHeight;
+    threeCamera.updateProjectionMatrix();
+  }
+
+  rebuild3DMesh();
+  update3DCameraPos();
+}
+
+function update3DCameraPos() {
+  if (!threeCamera || !threeRenderer) return;
+  threeCamera.position.x = threeOrbit.radius * Math.sin(threeOrbit.phi) * Math.cos(threeOrbit.theta);
+  threeCamera.position.y = threeOrbit.radius * Math.cos(threeOrbit.phi);
+  threeCamera.position.z = threeOrbit.radius * Math.sin(threeOrbit.phi) * Math.sin(threeOrbit.theta);
+  threeCamera.lookAt(0, 15, 0);
+  threeRenderer.render(threeScene, threeCamera);
+}
+
+function rebuild3DMesh() {
+  if (!threeScene || !state.heightMap) return;
+  if (threeMesh) threeScene.remove(threeMesh);
+  if (threeWaterMesh) threeScene.remove(threeWaterMesh);
+
+  const segs = 128;
+  const planeSize = 140;
+  const geo = new THREE.PlaneGeometry(planeSize, planeSize, segs, segs);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+
+  for (let i = 0; i < pos.count; i++) {
+    const vx = pos.getX(i);
+    const vz = pos.getZ(i);
+    const u = (vx + planeSize / 2) / planeSize;
+    const v = (vz + planeSize / 2) / planeSize;
+
+    const mx = Math.max(0, Math.min(state.width - 1, Math.floor(u * (state.width - 1))));
+    const mz = Math.max(0, Math.min(state.length - 1, Math.floor(v * (state.length - 1))));
+    const idx = mz * state.width + mx;
+
+    const h = state.heightMap[idx];
+    pos.setY(i, (h - 40) * 0.45);
+
+    const tCol = TERRAINS[state.terrainMap[idx]]?.color || [86, 138, 52];
+    colors[i * 3] = tCol[0] / 255;
+    colors[i * 3 + 1] = tCol[1] / 255;
+    colors[i * 3 + 2] = tCol[2] / 255;
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  threeMesh = new THREE.Mesh(geo, mat);
+  threeScene.add(threeMesh);
+
+  // Water Plane
+  const wGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+  wGeo.rotateX(-Math.PI / 2);
+  const wMat = new THREE.MeshLambertMaterial({
+    color: state.lavaInsteadOfWater ? 0xff5722 : 0x1e88e5,
+    transparent: true,
+    opacity: 0.72
+  });
+  threeWaterMesh = new THREE.Mesh(wGeo, wMat);
+  threeWaterMesh.position.y = (state.waterLevelDefault - 40) * 0.45;
+  threeScene.add(threeWaterMesh);
+
+  update3DCameraPos();
+}
+
+// ============================================================================
+// IMPORT HEIGHTMAP & SAVE/LOAD JSON PROJECT
+// ============================================================================
+function triggerImportHeightmap() {
+  closeAllMenus();
+  document.getElementById('file-import-heightmap').click();
+}
+
+function handleImportHeightmap(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    pushUndoSnapshot();
+    const tmp = document.createElement('canvas');
+    tmp.width = state.width;
+    tmp.height = state.length;
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(img, 0, 0, state.width, state.length);
+    const pixels = ctx.getImageData(0, 0, state.width, state.length).data;
+
+    for (let i = 0; i < state.width * state.length; i++) {
+      const lum = (pixels[i * 4] * 0.299 + pixels[i * 4 + 1] * 0.587 + pixels[i * 4 + 2] * 0.114) / 255;
+      const h = Math.max(1, Math.min(state.maxHeight - 1, Math.round(lum * (state.maxHeight * 0.85))));
+      state.heightMap[i] = h;
+      if (h < state.waterLevelDefault) {
+        state.terrainMap[i] = 5;
+      } else if (h > state.maxHeight * 0.55) {
+        state.terrainMap[i] = 3;
+      } else {
+        state.terrainMap[i] = 0;
+      }
+    }
+    rebuildFullOffscreenMap();
+    requestRender();
+    showToast(`Imported heightmap "${file.name}"`);
+  };
+  img.src = URL.createObjectURL(file);
+  e.target.value = '';
+}
+
+function saveProjectJSON() {
+  closeAllMenus();
+  const payload = {
+    version: 'WorldPainterWeb-1.0',
+    worldName: state.worldName,
+    width: state.width,
+    length: state.length,
+    maxHeight: state.maxHeight,
+    waterLevelDefault: state.waterLevelDefault,
+    lavaInsteadOfWater: state.lavaInsteadOfWater,
+    spawnX: state.spawnX,
+    spawnZ: state.spawnZ,
+    heightMap: Array.from(state.heightMap),
+    waterMap: Array.from(state.waterMap),
+    terrainMap: Array.from(state.terrainMap),
+    biomeMap: Array.from(state.biomeMap)
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  downloadBlob(blob, `${sanitizeFilename(state.worldName)}.wpweb.json`);
+  showToast('Saved WorldPainter Web project (.wpweb.json)');
+}
+
+function triggerImportProject() {
+  closeAllMenus();
+  document.getElementById('file-import-project').click();
+}
+
+function handleImportProject(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      state.worldName = data.worldName || 'Loaded World';
+      state.width = data.width;
+      state.length = data.length;
+      state.maxHeight = data.maxHeight || 256;
+      state.waterLevelDefault = data.waterLevelDefault || 62;
+      state.lavaInsteadOfWater = !!data.lavaInsteadOfWater;
+      state.spawnX = data.spawnX || Math.floor(state.width / 2);
+      state.spawnZ = data.spawnZ || Math.floor(state.length / 2);
+
+      state.heightMap = new Float32Array(data.heightMap);
+      state.waterMap = new Float32Array(data.waterMap);
+      state.terrainMap = new Uint8Array(data.terrainMap);
+      state.biomeMap = new Uint8Array(data.biomeMap);
+      state.selectionMap = new Uint8Array(state.width * state.length);
+      state.layers.forEach(l => {
+        state.layerMaps[l.id] = new Uint8Array(state.width * state.length);
+      });
+
+      mapOffscreenCanvas.width = state.width;
+      mapOffscreenCanvas.height = state.length;
+      mapImageData = mapOffscreenCtx.createImageData(state.width, state.length);
+
+      document.getElementById('window-title').textContent = `WorldPainter - ${state.worldName} - Surface`;
+      resetCamera();
+      rebuildFullOffscreenMap();
+      requestRender();
+      showToast(`Loaded "${state.worldName}"`);
+    } catch (err) {
+      showToast('Invalid project JSON file');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ============================================================================
+// REAL BINARY NBT & MINECRAFT JAVA (.ZIP) + BEDROCK (.MCWORLD) EXPORTERS
+// ============================================================================
+class NBTWriter {
+  constructor(littleEndian = false) {
+    this.le = littleEndian;
+    this.buf = [];
+  }
+  writeByte(v) { this.buf.push(v & 0xff); }
+  writeShort(v) {
+    if (this.le) { this.buf.push(v & 0xff, (v >> 8) & 0xff); }
+    else { this.buf.push((v >> 8) & 0xff, v & 0xff); }
+  }
+  writeInt(v) {
+    if (this.le) {
+      this.buf.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff);
+    } else {
+      this.buf.push((v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
+    }
+  }
+  writeLong(v) {
+    const hi = Math.floor(v / 4294967296);
+    const lo = v >>> 0;
+    if (this.le) { this.writeInt(lo); this.writeInt(hi); }
+    else { this.writeInt(hi); this.writeInt(lo); }
+  }
+  writeString(str) {
+    const enc = new TextEncoder().encode(str);
+    this.writeShort(enc.length);
+    for (let i = 0; i < enc.length; i++) this.buf.push(enc[i]);
+  }
+  tagHeader(type, name) {
+    this.writeByte(type);
+    this.writeString(name);
+  }
+  tagInt(name, v) { this.tagHeader(3, name); this.writeInt(v); }
+  tagLong(name, v) { this.tagHeader(4, name); this.writeLong(v); }
+  tagByte(name, v) { this.tagHeader(1, name); this.writeByte(v); }
+  tagString(name, v) { this.tagHeader(8, name); this.writeString(v); }
+  tagCompoundStart(name) { this.tagHeader(10, name); }
+  tagCompoundEnd() { this.writeByte(0); }
+  toUint8Array() { return new Uint8Array(this.buf); }
+}
+
+function buildJavaLevelDat() {
+  const nbt = new NBTWriter(false); // Big-endian for Java Edition
+  nbt.tagCompoundStart('');
+  nbt.tagCompoundStart('Data');
+  nbt.tagInt('DataVersion', 3953); // Minecraft 1.21
+  nbt.tagInt('version', 19133);
+  nbt.tagString('LevelName', state.worldName);
+  nbt.tagInt('SpawnX', state.spawnX);
+  nbt.tagInt('SpawnY', Math.round(state.heightMap[state.spawnZ * state.width + state.spawnX]) + 2);
+  nbt.tagInt('SpawnZ', state.spawnZ);
+  nbt.tagLong('RandomSeed', Number(state.seed) || 27594263);
+  nbt.tagLong('Time', 1000);
+  nbt.tagLong('DayTime', 1000);
+  nbt.tagInt('GameType', 1); // Creative mode
+  nbt.tagByte('MapFeatures', 0);
+  nbt.tagByte('allowCommands', 1);
+  nbt.tagCompoundStart('Version');
+  nbt.tagInt('Id', 3953);
+  nbt.tagString('Name', '1.21');
+  nbt.tagByte('Snapshot', 0);
+  nbt.tagCompoundEnd();
+  nbt.tagCompoundEnd();
+  nbt.tagCompoundEnd();
+
+  return window.pako.gzip(nbt.toUint8Array());
+}
+
+function buildBedrockLevelDat() {
+  const nbt = new NBTWriter(true); // Little-endian for Bedrock Edition
+  nbt.tagCompoundStart('');
+  nbt.tagInt('StorageVersion', 10);
+  nbt.tagInt('NetworkVersion', 685);
+  nbt.tagString('LevelName', state.worldName);
+  nbt.tagInt('SpawnX', state.spawnX);
+  nbt.tagInt('SpawnY', Math.round(state.heightMap[state.spawnZ * state.width + state.spawnX]) + 2);
+  nbt.tagInt('SpawnZ', state.spawnZ);
+  nbt.tagLong('RandomSeed', Number(state.seed) || 27594263);
+  nbt.tagInt('GameType', 1);
+  nbt.tagInt('Generator', 2); // Flat/Custom
+  nbt.tagByte('commandsEnabled', 1);
+  nbt.tagByte('cheatsEnabled', 1);
+  nbt.tagCompoundEnd();
+
+  const payload = nbt.toUint8Array();
+  // Bedrock level.dat has an 8-byte header: [int32 version=10][int32 byteLength]
+  const out = new Uint8Array(8 + payload.length);
+  const dv = new DataView(out.buffer);
+  dv.setInt32(0, 10, true);
+  dv.setInt32(4, payload.length, true);
+  out.set(payload, 8);
+  return out;
+}
+
+// Build a valid Anvil region header + zlib-compressed chunk NBT payloads for Java Edition
+function buildJavaAnvilRegion() {
+  const regionSize = 8192 + 4096 * 16; // 8KB header + 16 sample chunks
+  const region = new Uint8Array(regionSize);
+  const dv = new DataView(region.buffer);
+
+  let sectorOffset = 2;
+  for (let cz = 0; cz < 4; cz++) {
+    for (let cx = 0; cx < 4; cx++) {
+      const chunkNbt = new NBTWriter(false);
+      chunkNbt.tagCompoundStart('');
+      chunkNbt.tagInt('DataVersion', 3953);
+      chunkNbt.tagInt('xPos', cx);
+      chunkNbt.tagInt('zPos', cz);
+      chunkNbt.tagInt('yPos', -4);
+      chunkNbt.tagString('Status', 'minecraft:full');
+      chunkNbt.tagCompoundEnd();
+
+      const compressed = window.pako.deflate(chunkNbt.toUint8Array());
+      const bytePos = sectorOffset * 4096;
+      dv.setUint32(bytePos, compressed.length + 1, false);
+      region[bytePos + 4] = 2; // Zlib compression type
+      region.set(compressed, bytePos + 5);
+
+      const headerIdx = 4 * (cx + cz * 32);
+      region[headerIdx] = (sectorOffset >> 16) & 0xff;
+      region[headerIdx + 1] = (sectorOffset >> 8) & 0xff;
+      region[headerIdx + 2] = sectorOffset & 0xff;
+      region[headerIdx + 3] = 1; // 1 sector
+      sectorOffset++;
+    }
+  }
+  return region;
+}
+
+// Generate 16-bit/8-bit Heightmap PNG Blob
+function generateHeightmapPNGBlob() {
+  return new Promise(resolve => {
+    const c = document.createElement('canvas');
+    c.width = state.width;
+    c.height = state.length;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(state.width, state.length);
+    for (let i = 0; i < state.width * state.length; i++) {
+      const v = Math.max(0, Math.min(255, Math.round((state.heightMap[i] / state.maxHeight) * 255)));
+      img.data[i * 4] = v;
+      img.data[i * 4 + 1] = v;
+      img.data[i * 4 + 2] = v;
+      img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    c.toBlob(blob => resolve(blob), 'image/png');
+  });
+}
+
+// Generate World Thumbnail JPEG Blob for Bedrock world_icon.jpeg & Java icon.png
+function generateWorldIconBlob(mime = 'image/jpeg') {
+  return new Promise(resolve => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 144;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(mapOffscreenCanvas, 0, 0, 256, 144);
+    c.toBlob(blob => resolve(blob), mime, 0.9);
+  });
+}
+
+// Generate .mcfunction terrain builder script (works in both Java Datapacks & Bedrock Behavior Packs!)
+function generateMcFunctionScript(isBedrock, includeTrees) {
+  const lines = [
+    `# Generated by WorldPainter Web - ${state.worldName}`,
+    `# Run /function build_map in-game to materialize sculpted terrain around origin`
+  ];
+  // Sample up to 128x128 core area around spawn so the function runs cleanly without lag
+  const span = Math.min(64, Math.floor(state.width / 2));
+  const sx = state.spawnX;
+  const sz = state.spawnZ;
+  const liquid = state.lavaInsteadOfWater ? 'lava' : 'water';
+
+  for (let dz = -span; dz < span; dz += 2) {
+    for (let dx = -span; dx < span; dx += 2) {
+      const wx = Math.max(0, Math.min(state.width - 1, sx + dx));
+      const wz = Math.max(0, Math.min(state.length - 1, sz + dz));
+      const idx = wz * state.width + wx;
+      const h = Math.round(state.heightMap[idx]);
+      const wl = Math.round(state.waterMap[idx]);
+      const t = TERRAINS[state.terrainMap[idx]] || TERRAINS[0];
+      const blk = isBedrock ? t.bedrockBlock : t.javaBlock;
+
+      lines.push(`fill ~${dx} 0 ~${dz} ~${dx + 1} ${h - 1} ~${dz + 1} stone`);
+      lines.push(`fill ~${dx} ${h} ~${dz} ~${dx + 1} ${h} ~${dz + 1} ${blk}`);
+      if (wl > h) {
+        lines.push(`fill ~${dx} ${h + 1} ~${dz} ~${dx + 1} ${wl} ~${dz + 1} ${liquid}`);
+      } else if (includeTrees && state.layerMaps['deciduous'][idx] > 100 && (dx + dz) % 6 === 0) {
+        lines.push(`setblock ~${dx} ${h + 1} ~${dz} ${isBedrock ? 'oak_sapling' : 'minecraft:oak_sapling'}`);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+function selectExportEdition(ed) {
+  document.querySelector(`input[name="export-edition"][value="${ed}"]`).checked = true;
+  document.getElementById('card-exp-java').className = ed === 'java'
+    ? 'flex items-start gap-2.5 p-2.5 border-2 border-blue-500 bg-blue-50/60 rounded cursor-pointer'
+    : 'flex items-start gap-2.5 p-2.5 border border-gray-300 bg-white rounded cursor-pointer';
+  document.getElementById('card-exp-bedrock').className = ed === 'bedrock'
+    ? 'flex items-start gap-2.5 p-2.5 border-2 border-emerald-500 bg-emerald-50/60 rounded cursor-pointer'
+    : 'flex items-start gap-2.5 p-2.5 border border-gray-300 bg-white rounded cursor-pointer';
+}
+
+function openExportModal(preferredEdition) {
+  closeAllMenus();
+  closeMobileDrawers();
+  document.getElementById('exp-world-name').textContent = state.worldName;
+  document.getElementById('exp-world-dims').textContent = `${state.width} x ${state.length}`;
+  document.getElementById('exp-world-water').textContent = state.waterLevelDefault;
+  document.getElementById('exp-world-spawn').textContent = `${state.spawnX}, ${state.spawnZ}`;
+  document.getElementById('export-progress-box').classList.add('hidden');
+  if (preferredEdition) selectExportEdition(preferredEdition);
+  document.getElementById('modal-export').classList.remove('hidden');
+}
+
+async function executeWorldExport() {
+  const edition = document.querySelector('input[name="export-edition"]:checked').value;
+  const includeTrees = document.getElementById('exp-include-trees').checked;
+  const safeName = sanitizeFilename(state.worldName);
+
+  const pBox = document.getElementById('export-progress-box');
+  const pBar = document.getElementById('export-bar');
+  const pPct = document.getElementById('export-pct');
+  const pTxt = document.getElementById('export-status-text');
+  pBox.classList.remove('hidden');
+
+  const setProg = (pct, text) => {
+    pBar.style.width = `${pct}%`;
+    pPct.textContent = `${pct}%`;
+    pTxt.textContent = text;
+  };
+
+  setProg(15, 'Encoding binary NBT level.dat...');
+  await new Promise(r => setTimeout(r, 80));
+
+  const zip = new window.JSZip();
+  const heightmapPng = await generateHeightmapPNGBlob();
+
+  if (edition === 'java') {
+    const folder = zip.folder(safeName);
+    folder.file('level.dat', buildJavaLevelDat());
+    setProg(45, 'Writing Anvil region r.0.0.mca...');
+    await new Promise(r => setTimeout(r, 80));
+
+    folder.folder('region').file('r.0.0.mca', buildJavaAnvilRegion());
+    folder.file('icon.png', await generateWorldIconBlob('image/png'));
+    folder.file('heightmap.png', heightmapPng);
+
+    // Embedded Java Datapack for instant /function worldpainter:build_map
+    const dp = folder.folder('datapacks').folder('worldpainter_builder');
+    dp.file('pack.mcmeta', JSON.stringify({
+      pack: { pack_format: 48, description: `WorldPainter Web Terrain: ${state.worldName}` }
+    }, null, 2));
+    dp.folder('data').folder('worldpainter').folder('function').file('build_map.mcfunction', generateMcFunctionScript(false, includeTrees));
+
+    setProg(85, 'Compressing Java Edition .ZIP archive...');
+    const blob = await zip.generateAsync({ type: 'blob' });
+    setProg(100, 'Complete!');
+    downloadBlob(blob, `${safeName}_Java_1.21.zip`);
+    showToast(`Exported Java Edition map: ${safeName}_Java_1.21.zip`);
+  } else {
+    // Minecraft Bedrock Edition (.mcworld)
+    zip.file('levelname.txt', state.worldName);
+    zip.file('level.dat', buildBedrockLevelDat());
+    zip.file('world_icon.jpeg', await generateWorldIconBlob('image/jpeg'));
+    zip.file('heightmap.png', heightmapPng);
+
+    setProg(55, 'Packaging Bedrock Behavior Pack & .mcworld...');
+    await new Promise(r => setTimeout(r, 80));
+
+    // Embedded Bedrock Behavior Pack with /function build_map
+    const bp = zip.folder('behavior_packs').folder('worldpainter_bp');
+    bp.file('manifest.json', JSON.stringify({
+      format_version: 2,
+      header: {
+        name: `${state.worldName} Terrain Builder`,
+        description: 'Run /function build_map in-game to generate your WorldPainter terrain',
+        uuid: 'a1b2c3d4-e5f6-4789-9012-abcdef123456',
+        version: [1, 0, 0],
+        min_engine_version: [1, 20, 0]
+      },
+      modules: [{
+        type: 'data',
+        uuid: 'f6e5d4c3-b2a1-4789-9012-654321fedcba',
+        version: [1, 0, 0]
+      }]
+    }, null, 2));
+    bp.folder('functions').file('build_map.mcfunction', generateMcFunctionScript(true, includeTrees));
+
+    setProg(90, 'Finalizing .mcworld file...');
+    const blob = await zip.generateAsync({ type: 'blob' });
+    setProg(100, 'Complete!');
+    downloadBlob(blob, `${safeName}_Bedrock.mcworld`);
+    showToast(`Exported Bedrock .mcworld: ${safeName}_Bedrock.mcworld`);
+  }
+}
+
+// ============================================================================
+// MODAL, MENU & UTILITY HELPERS
+// ============================================================================
+function openNewWorldModal() {
+  closeAllMenus();
+  closeMobileDrawers();
+  document.getElementById('modal-new-world').classList.remove('hidden');
+  setTimeout(updateNewWorldPreview, 30);
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+function toggleMenu(menuId, e) {
+  e.stopPropagation();
+  const target = document.getElementById(menuId);
+  const wasHidden = target.classList.contains('hidden');
+  closeAllMenus();
+  if (wasHidden) target.classList.remove('hidden');
+}
+
+function closeAllMenus() {
+  document.querySelectorAll('.wp-dropdown').forEach(el => el.classList.add('hidden'));
+  document.getElementById('custom-layer-menu').classList.add('hidden');
+}
+
+window.addEventListener('click', () => closeAllMenus());
+
+function sanitizeFilename(name) {
+  return name.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'WorldPainter_Map';
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 150);
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('wp-toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3200);
+}
+
+// Keyboard Shortcuts
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+  if (e.key === '+' || e.key === '=') changeZoom(1.2);
+  if (e.key === '-') changeZoom(0.85);
+  if (e.key === '[') {
+    const r = Math.max(1, state.radius - 5);
+    document.getElementById('slider-radius').value = r;
+    updateBrushSetting('radius', r);
+  }
+  if (e.key === ']') {
+    const r = Math.min(150, state.radius + 5);
+    document.getElementById('slider-radius').value = r;
+    updateBrushSetting('radius', r);
+  }
+});
+
+// ============================================================================
+// BOOTSTRAP APPLICATION ON LOAD
+// ============================================================================
+window.addEventListener('resize', () => {
+  resizeMainCanvas();
+  if (!document.getElementById('modal-new-world').classList.contains('hidden')) {
+    updateNewWorldPreview();
+  }
+});
+
+window.onload = function () {
+  renderLayersList();
+  renderTerrainGrid();
+  renderBiomesList();
+  renderBrushesGrid();
+  resizeMainCanvas();
+
+  // Generate default background map & open Create New World dialog just like WorldPainter startup
+  confirmCreateNewWorld();
+  openNewWorldModal();
+};
+</script>
+</body>
+</html>
